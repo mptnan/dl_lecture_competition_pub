@@ -1,0 +1,7 @@
+defaults:
+  - env: env0
+  - _self_
+
+hydra:
+  run:
+    dir: ${env.output_dir}

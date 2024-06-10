@@ -2,13 +2,16 @@ import random
 import re
 import time
 from logging import DEBUG, INFO, Formatter, StreamHandler, getLogger
+from pathlib import Path
 from statistics import mode
 
+import hydra
 import numpy as np
 import pandas
 import torch
 import torch.nn as nn
 import torchvision
+from omegaconf import DictConfig, OmegaConf
 from PIL import Image
 from torchvision import transforms
 
@@ -367,11 +370,24 @@ class Timer:
         return self._times[-1] - self._times[-2]
 
 
-def main():
+@hydra.main(version_base=None, config_path="configs", config_name="config")
+def main(cfg: DictConfig):
+    logger = prepare_logger()
+    logger.info("[configuration]\n" + OmegaConf.to_yaml(cfg))
+
     # deviceの設定
-    set_seed(42)
     device = "cuda" if torch.cuda.is_available() else "cpu"
     logger.info(f"{str(device)} is used for device")
+
+    # redefine all cfg variables
+    seed = cfg.env.seed
+    num_epoch = cfg.env.num_epoch
+    lr = cfg.env.lr
+
+    hydra_output_dir = Path(hydra.core.hydra_config.HydraConfig.get().runtime.output_dir)
+    logger.info(f"output into {hydra_output_dir}")
+
+    set_seed(seed)
 
     logger = prepare_logger()
     timer = Timer()
@@ -388,9 +404,8 @@ def main():
     model = VQAModel(vocab_size=len(train_dataset.question2idx) + 1, n_answer=len(train_dataset.answer2idx)).to(device)
 
     # optimizer / criterion
-    num_epoch = 20
     criterion = nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-5)
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=1e-5)
 
     timer.push()
     logger.info(f"preparation took {timer.last_lap()/60:.2f} minutes")
@@ -416,8 +431,8 @@ def main():
 
     submission = [train_dataset.idx2answer[id] for id in submission]
     submission = np.array(submission)
-    torch.save(model.state_dict(), "model.pth")
-    np.save("submission.npy", submission)
+    torch.save(model.state_dict(), hydra_output_dir / "model.pth")
+    np.save(hydra_output_dir / "submission.npy", submission)
 
 
 if __name__ == "__main__":
