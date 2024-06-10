@@ -1,14 +1,15 @@
-import re
 import random
+import re
 import time
+from logging import DEBUG, INFO, Formatter, StreamHandler, getLogger
 from statistics import mode
 
-from PIL import Image
 import numpy as np
 import pandas
 import torch
 import torch.nn as nn
 import torchvision
+from PIL import Image
 from torchvision import transforms
 
 
@@ -22,41 +23,48 @@ def set_seed(seed):
     torch.backends.cudnn.benchmark = False
 
 
+def prepare_logger():
+    logger = getLogger("dl_lecture_main.py")
+    if logger.hasHandlers():
+        return logger
+
+    logger.setLevel(DEBUG)
+    h = StreamHandler()
+    h.setLevel(INFO)
+    f = Formatter("[%(levelname)s][%(asctime)s]: %(message)s")
+    h.setFormatter(f)
+    logger.addHandler(h)
+    return logger
+
+
 def process_text(text):
     # lowercase
     text = text.lower()
 
     # 数詞を数字に変換
-    num_word_to_digit = {
-        'zero': '0', 'one': '1', 'two': '2', 'three': '3', 'four': '4',
-        'five': '5', 'six': '6', 'seven': '7', 'eight': '8', 'nine': '9',
-        'ten': '10'
-    }
+    num_word_to_digit = {"zero": "0", "one": "1", "two": "2", "three": "3", "four": "4", "five": "5", "six": "6", "seven": "7", "eight": "8", "nine": "9", "ten": "10"}
     for word, digit in num_word_to_digit.items():
         text = text.replace(word, digit)
 
     # 小数点のピリオドを削除
-    text = re.sub(r'(?<!\d)\.(?!\d)', '', text)
+    text = re.sub(r"(?<!\d)\.(?!\d)", "", text)
 
     # 冠詞の削除
-    text = re.sub(r'\b(a|an|the)\b', '', text)
+    text = re.sub(r"\b(a|an|the)\b", "", text)
 
     # 短縮形のカンマの追加
-    contractions = {
-        "dont": "don't", "isnt": "isn't", "arent": "aren't", "wont": "won't",
-        "cant": "can't", "wouldnt": "wouldn't", "couldnt": "couldn't"
-    }
+    contractions = {"dont": "don't", "isnt": "isn't", "arent": "aren't", "wont": "won't", "cant": "can't", "wouldnt": "wouldn't", "couldnt": "couldn't"}
     for contraction, correct in contractions.items():
         text = text.replace(contraction, correct)
 
     # 句読点をスペースに変換
-    text = re.sub(r"[^\w\s':]", ' ', text)
+    text = re.sub(r"[^\w\s':]", " ", text)
 
     # 句読点をスペースに変換
-    text = re.sub(r'\s+,', ',', text)
+    text = re.sub(r"\s+,", ",", text)
 
     # 連続するスペースを1つに変換
-    text = re.sub(r'\s+', ' ', text).strip()
+    text = re.sub(r"\s+", " ", text).strip()
 
     return text
 
@@ -154,10 +162,10 @@ class VQADataset(torch.utils.data.Dataset):
 # 2. 評価指標の実装
 # 簡単にするならBCEを利用する
 def VQA_criterion(batch_pred: torch.Tensor, batch_answers: torch.Tensor):
-    total_acc = 0.
+    total_acc = 0.0
 
     for pred, answers in zip(batch_pred, batch_answers):
-        acc = 0.
+        acc = 0.0
         for i in range(len(answers)):
             num_match = 0
             for j in range(len(answers)):
@@ -187,10 +195,7 @@ class BasicBlock(nn.Module):
 
         self.shortcut = nn.Sequential()
         if stride != 1 or in_channels != out_channels:
-            self.shortcut = nn.Sequential(
-                nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride),
-                nn.BatchNorm2d(out_channels)
-            )
+            self.shortcut = nn.Sequential(nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride), nn.BatchNorm2d(out_channels))
 
     def forward(self, x):
         residual = x
@@ -219,10 +224,7 @@ class BottleneckBlock(nn.Module):
 
         self.shortcut = nn.Sequential()
         if stride != 1 or in_channels != out_channels * self.expansion:
-            self.shortcut = nn.Sequential(
-                nn.Conv2d(in_channels, out_channels * self.expansion, kernel_size=1, stride=stride),
-                nn.BatchNorm2d(out_channels * self.expansion)
-            )
+            self.shortcut = nn.Sequential(nn.Conv2d(in_channels, out_channels * self.expansion, kernel_size=1, stride=stride), nn.BatchNorm2d(out_channels * self.expansion))
 
     def forward(self, x):
         residual = x
@@ -293,11 +295,7 @@ class VQAModel(nn.Module):
         self.resnet = ResNet18()
         self.text_encoder = nn.Linear(vocab_size, 512)
 
-        self.fc = nn.Sequential(
-            nn.Linear(1024, 512),
-            nn.ReLU(inplace=True),
-            nn.Linear(512, n_answer)
-        )
+        self.fc = nn.Sequential(nn.Linear(1024, 512), nn.ReLU(inplace=True), nn.Linear(512, n_answer))
 
     def forward(self, image, question):
         image_feature = self.resnet(image)  # 画像の特徴量
@@ -319,8 +317,7 @@ def train(model, dataloader, optimizer, criterion, device):
 
     start = time.time()
     for image, question, answers, mode_answer in dataloader:
-        image, question, answer, mode_answer = \
-            image.to(device), question.to(device), answers.to(device), mode_answer.to(device)
+        image, question, answer, mode_answer = image.to(device), question.to(device), answers.to(device), mode_answer.to(device)
 
         pred = model(image, question)
         loss = criterion(pred, mode_answer.squeeze())
@@ -345,8 +342,7 @@ def eval(model, dataloader, optimizer, criterion, device):
 
     start = time.time()
     for image, question, answers, mode_answer in dataloader:
-        image, question, answer, mode_answer = \
-            image.to(device), question.to(device), answers.to(device), mode_answer.to(device)
+        image, question, answer, mode_answer = image.to(device), question.to(device), answers.to(device), mode_answer.to(device)
 
         pred = model(image, question)
         loss = criterion(pred, mode_answer.squeeze())
@@ -358,16 +354,29 @@ def eval(model, dataloader, optimizer, criterion, device):
     return total_loss / len(dataloader), total_acc / len(dataloader), simple_acc / len(dataloader), time.time() - start
 
 
+class Timer:
+    def __init__(self):
+        self._times = [time.perf_counter()]
+
+    def push(self):
+        self._times.append(time.perf_counter())
+
+    def last_lap(self) -> float:
+        if len(self._times) < 2:
+            return 0.0
+        return self._times[-1] - self._times[-2]
+
+
 def main():
     # deviceの設定
     set_seed(42)
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
+    logger = prepare_logger()
+    timer = Timer()
+
     # dataloader / model
-    transform = transforms.Compose([
-        transforms.Resize((224, 224)),
-        transforms.ToTensor()
-    ])
+    transform = transforms.Compose([transforms.Resize((224, 224)), transforms.ToTensor()])
     train_dataset = VQADataset(df_path="./data/train.json", image_dir="./data/train", transform=transform)
     test_dataset = VQADataset(df_path="./data/valid.json", image_dir="./data/valid", transform=transform, answer=False)
     test_dataset.update_dict(train_dataset)
@@ -375,21 +384,22 @@ def main():
     train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=128, shuffle=True)
     test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=1, shuffle=False)
 
-    model = VQAModel(vocab_size=len(train_dataset.question2idx)+1, n_answer=len(train_dataset.answer2idx)).to(device)
+    model = VQAModel(vocab_size=len(train_dataset.question2idx) + 1, n_answer=len(train_dataset.answer2idx)).to(device)
 
     # optimizer / criterion
     num_epoch = 20
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-5)
 
+    timer.push()
+    logger.info(f"preparation took {timer.last_lap()/60:.2f} minutes")
+
     # train model
     for epoch in range(num_epoch):
         train_loss, train_acc, train_simple_acc, train_time = train(model, train_loader, optimizer, criterion, device)
-        print(f"【{epoch + 1}/{num_epoch}】\n"
-              f"train time: {train_time:.2f} [s]\n"
-              f"train loss: {train_loss:.4f}\n"
-              f"train acc: {train_acc:.4f}\n"
-              f"train simple acc: {train_simple_acc:.4f}")
+        print(f"【{epoch + 1}/{num_epoch}】\n" f"train time: {train_time:.2f} [s]\n" f"train loss: {train_loss:.4f}\n" f"train acc: {train_acc:.4f}\n" f"train simple acc: {train_simple_acc:.4f}")
+        timer.push()
+        logger.info(f"epoch took {timer.last_lap()/60:.2f} minutes")
 
     # 提出用ファイルの作成
     model.eval()
@@ -404,6 +414,7 @@ def main():
     submission = np.array(submission)
     torch.save(model.state_dict(), "model.pth")
     np.save("submission.npy", submission)
+
 
 if __name__ == "__main__":
     main()
