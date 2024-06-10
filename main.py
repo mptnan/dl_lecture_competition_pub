@@ -371,6 +371,7 @@ def main():
     # deviceの設定
     set_seed(42)
     device = "cuda" if torch.cuda.is_available() else "cpu"
+    logger.info(f"{str(device)} is used for device")
 
     logger = prepare_logger()
     timer = Timer()
@@ -395,9 +396,12 @@ def main():
     logger.info(f"preparation took {timer.last_lap()/60:.2f} minutes")
 
     # train model
+    # 10 mins of TPU / epoch
     for epoch in range(num_epoch):
         train_loss, train_acc, train_simple_acc, train_time = train(model, train_loader, optimizer, criterion, device)
-        print(f"【{epoch + 1}/{num_epoch}】\n" f"train time: {train_time:.2f} [s]\n" f"train loss: {train_loss:.4f}\n" f"train acc: {train_acc:.4f}\n" f"train simple acc: {train_simple_acc:.4f}")
+        logger.info(
+            f"【{epoch + 1}/{num_epoch}】\n" f"train time: {train_time:.2f} [s]\n" f"train loss: {train_loss:.4f}\n" f"train acc: {train_acc:.4f}\n" f"train simple acc: {train_simple_acc:.4f}"
+        )
         timer.push()
         logger.info(f"epoch took {timer.last_lap()/60:.2f} minutes")
 
