@@ -311,7 +311,7 @@ class VQAModel(nn.Module):
 
 
 # 4. 学習の実装
-def train(model, dataloader, optimizer, criterion, device):
+def train(model, dataloader, optimizer, criterion, device, timer=None):
     model.train()
 
     total_loss = 0
@@ -319,19 +319,38 @@ def train(model, dataloader, optimizer, criterion, device):
     simple_acc = 0
 
     start = time.time()
+    if timer is not None:
+        timer.push()
     for image, question, answers, mode_answer in dataloader:
+        if timer is not None:
+            timer.push(tag="load_data")
+
         image, question, answer, mode_answer = image.to(device), question.to(device), answers.to(device), mode_answer.to(device)
+        if timer is not None:
+            timer.push(tag="to_device")
 
         pred = model(image, question)
+        if timer is not None:
+            timer.push(tag="pred")
+
         loss = criterion(pred, mode_answer.squeeze())
+        if timer is not None:
+            timer.push(tag="calc_loss")
 
         optimizer.zero_grad()
         loss.backward()
+        if timer is not None:
+            timer.push(tag="backward")
+
         optimizer.step()
+        if timer is not None:
+            timer.push(tag="step")
 
         total_loss += loss.item()
         total_acc += VQA_criterion(pred.argmax(1), answers)  # VQA accuracy
         simple_acc += (pred.argmax(1) == mode_answer).float().mean().item()  # simple accuracy
+        if timer is not None:
+            timer.push()
 
     return total_loss / len(dataloader), total_acc / len(dataloader), simple_acc / len(dataloader), time.time() - start
 
@@ -359,15 +378,38 @@ def eval(model, dataloader, optimizer, criterion, device):
 
 class Timer:
     def __init__(self):
-        self._times = [time.perf_counter()]
+        self._last_time = time.perf_counter()
+        self._laps = []
+        self._tag_laps = {}
 
-    def push(self):
-        self._times.append(time.perf_counter())
+    def push(self, tag: str = ""):
+        t = time.perf_counter()
+        lap = t - self._last_time
+        self._last_time = t
+        self._laps.append(lap)
+        if tag not in self._tag_laps.keys():
+            self._tag_laps[tag] = []
+        self._tag_laps[tag].append(lap)
 
     def last_lap(self) -> float:
-        if len(self._times) < 2:
+        if len(self._laps) == 0:
             return 0.0
-        return self._times[-1] - self._times[-2]
+        return self._laps[-1]
+
+    def last_lap_tag(self, tag: str):
+        if tag not in self._tag_laps.keys() or len(self._tag_laps[tag]) == 0:
+            return 0.0
+        return self._tag_laps[tag][-1]
+
+    def average_lap(self) -> float:
+        if len(self._laps) == 0:
+            return 0.0
+        return sum(self._laps) / len(self._laps)
+
+    def average_lap_tag(self, tag: str):
+        if tag not in self._tag_laps.keys() or len(self._tag_laps[tag]) == 0:
+            return 0.0
+        return sum(self._tag_laps[tag]) / len(self._tag_laps[tag])
 
 
 @hydra.main(version_base=None, config_path="configs", config_name="config")
@@ -389,8 +431,8 @@ def main(cfg: DictConfig):
 
     set_seed(seed)
 
-    logger = prepare_logger()
-    timer = Timer()
+    epoch_timer = Timer()
+    train_timer = Timer()
 
     # dataloader / model
     transform = transforms.Compose([transforms.Resize((224, 224)), transforms.ToTensor()])
@@ -407,18 +449,26 @@ def main(cfg: DictConfig):
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=1e-5)
 
-    timer.push()
-    logger.info(f"preparation took {timer.last_lap()/60:.2f} minutes")
+    epoch_timer.push()
+    logger.info(f"preparation took {epoch_timer.last_lap()/60:.2f} minutes")
 
     # train model
     # 10 mins of TPU / epoch
     for epoch in range(num_epoch):
-        train_loss, train_acc, train_simple_acc, train_time = train(model, train_loader, optimizer, criterion, device)
+        train_loss, train_acc, train_simple_acc, train_time = train(model, train_loader, optimizer, criterion, device, timer=train_timer)
         logger.info(
             f"【{epoch + 1}/{num_epoch}】\n" f"train time: {train_time:.2f} [s]\n" f"train loss: {train_loss:.4f}\n" f"train acc: {train_acc:.4f}\n" f"train simple acc: {train_simple_acc:.4f}"
         )
-        timer.push()
-        logger.info(f"epoch took {timer.last_lap()/60:.2f} minutes")
+        epoch_timer.push()
+        logger.info(f"epoch took {epoch_timer.last_lap()/60:.2f} minutes")
+
+        if "load_data" in train_timer._tag_laps.keys():
+            logger.info(f"load_data took {train_timer.average_lap_tag('load_data'):.2e} secs average")
+            logger.info(f"to_device took {train_timer.average_lap_tag('to_device'):.2e} secs average")
+            logger.info(f"pred took {train_timer.average_lap_tag('pred'):.2e} secs average")
+            logger.info(f"calc_loss took {train_timer.average_lap_tag('calc_loss'):.2e} secs average")
+            logger.info(f"backward took {train_timer.average_lap_tag('backward'):.2e} secs average")
+            logger.info(f"step took {train_timer.average_lap_tag('step'):.2e} secs average")
 
     # 提出用ファイルの作成
     model.eval()
