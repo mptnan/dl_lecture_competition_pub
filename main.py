@@ -533,14 +533,19 @@ def main(cfg: DictConfig):
     hydra_output_dir = Path(hydra.core.hydra_config.HydraConfig.get().runtime.output_dir)
     logger.info(f"output into {hydra_output_dir}")
 
-    logger.info(f"{str(device)} is used for device")
-
     devices = device_info()
     logger.info("[devices]\n" + devices["info"])
     if device == "xla" and not devices["tpu"]["available"]:
         raise DeviceNotAvailable("tpu(xla) is not available")
     elif device == "cuda" and not devices["cuda"]["available"]:
         raise DeviceNotAvailable("gpu(cuda) is not available")
+    elif device != "cpu":
+        raise DeviceNotAvailable(f"{device} is not available")
+
+    if device == "xla":
+        import torch_xla.core.xla_model as xm
+
+        device = xm.xla_device()
 
     set_seed(seed)
 
