@@ -539,7 +539,7 @@ def main(cfg: DictConfig):
         raise DeviceNotAvailable("tpu(xla) is not available")
     elif device == "cuda" and not devices["cuda"]["available"]:
         raise DeviceNotAvailable("gpu(cuda) is not available")
-    elif device != "cpu":
+    elif device not in ["cpu", "cuda", "xla"]:
         raise DeviceNotAvailable(f"{device} is not available")
 
     if device == "xla":
