@@ -13,10 +13,13 @@ import tensorflow as tf
 import torch
 import torch.nn as nn
 import torchvision
+import tqdm as tqdm_module
 import yaml
 from omegaconf import DictConfig, OmegaConf
 from PIL import Image
 from torchvision import transforms
+
+tqdm = None
 
 
 def device_info():
@@ -370,7 +373,15 @@ class VQAModel(nn.Module):
 
 
 # 4. 学習の実装
-def train(model, dataloader, optimizer, criterion, device, timer=None):
+def train(model, dataloader, optimizer, criterion, device, timer=None, env_name=""):
+    global tqdm
+
+    if tqdm is None:
+        if env_name == "gcolab":
+            tqdm = tqdm_module.notebook.tqdm
+        else:
+            tqdm = tqdm_module.tqdm
+
     model.train()
 
     total_loss = 0
@@ -380,46 +391,59 @@ def train(model, dataloader, optimizer, criterion, device, timer=None):
     start = time.time()
     if timer is not None:
         timer.push()
-    for image, question, answers, mode_answer in dataloader:
-        if timer is not None:
-            timer.push(tag="load_data")
+    with tqdm(
+        enumerate(dataloader),
+        total=len(dataloader),
+        leave=False,
+    ) as pbar:
+        for i, (image, question, answers, mode_answer) in pbar:
+            if timer is not None:
+                timer.push(tag="load_data")
 
-        image, question, answers, mode_answer = (
-            image.to(device),
-            question.to(device),
-            answers.to(device),
-            mode_answer.to(device),
-        )
-        if timer is not None:
-            timer.push(tag="to_device")
+            image, question, answers, mode_answer = (
+                image.to(device),
+                question.to(device),
+                answers.to(device),
+                mode_answer.to(device),
+            )
+            if timer is not None:
+                timer.push(tag="to_device")
 
-        pred = model(image, question)
-        if timer is not None:
-            timer.push(tag="pred")
+            pred = model(image, question)
+            if timer is not None:
+                timer.push(tag="pred")
 
-        loss = criterion(pred, mode_answer.squeeze())
-        if timer is not None:
-            timer.push(tag="calc_loss")
+            loss = criterion(pred, mode_answer.squeeze())
+            if timer is not None:
+                timer.push(tag="calc_loss")
 
-        optimizer.zero_grad()
-        loss.backward()
-        if timer is not None:
-            timer.push(tag="backward")
+            optimizer.zero_grad()
+            loss.backward()
+            if timer is not None:
+                timer.push(tag="backward")
 
-        optimizer.step()
-        if timer is not None:
-            timer.push(tag="step")
+            optimizer.step()
+            if timer is not None:
+                timer.push(tag="step")
 
-        total_loss += loss.item()
-        total_acc += VQA_criterion(pred.argmax(1), answers)  # VQA accuracy
-        simple_acc += (pred.argmax(1) == mode_answer).float().mean().item()  # simple accuracy
-        if timer is not None:
-            timer.push()
+            total_loss += loss.item()
+            total_acc += VQA_criterion(pred.argmax(1), answers)  # VQA accuracy
+            simple_acc += (pred.argmax(1) == mode_answer).float().mean().item()  # simple accuracy
+            if timer is not None:
+                timer.push()
 
     return total_loss / len(dataloader), total_acc / len(dataloader), simple_acc / len(dataloader), time.time() - start
 
 
-def eval(model, dataloader, optimizer, criterion, device):
+def eval(model, dataloader, optimizer, criterion, device, env_name=""):
+    global tqdm
+
+    if tqdm is None:
+        if env_name == "gcolab":
+            tqdm = tqdm_module.notebook.tqdm
+        else:
+            tqdm = tqdm_module.tqdm
+
     model.eval()
 
     total_loss = 0
@@ -427,20 +451,25 @@ def eval(model, dataloader, optimizer, criterion, device):
     simple_acc = 0
 
     start = time.time()
-    for image, question, answers, mode_answer in dataloader:
-        image, question, answers, mode_answer = (
-            image.to(device),
-            question.to(device),
-            answers.to(device),
-            mode_answer.to(device),
-        )
+    with tqdm(
+        enumerate(dataloader),
+        total=len(dataloader),
+        leave=False,
+    ) as pbar:
+        for i, (image, question, answers, mode_answer) in pbar:
+            image, question, answers, mode_answer = (
+                image.to(device),
+                question.to(device),
+                answers.to(device),
+                mode_answer.to(device),
+            )
 
-        pred = model(image, question)
-        loss = criterion(pred, mode_answer.squeeze())
+            pred = model(image, question)
+            loss = criterion(pred, mode_answer.squeeze())
 
-        total_loss += loss.item()
-        total_acc += VQA_criterion(pred.argmax(1), answers)  # VQA accuracy
-        simple_acc += (pred.argmax(1) == mode_answer).mean().item()  # simple accuracy
+            total_loss += loss.item()
+            total_acc += VQA_criterion(pred.argmax(1), answers)  # VQA accuracy
+            simple_acc += (pred.argmax(1) == mode_answer).mean().item()  # simple accuracy
 
     return total_loss / len(dataloader), total_acc / len(dataloader), simple_acc / len(dataloader), time.time() - start
 
@@ -496,6 +525,7 @@ def main(cfg: DictConfig):
     lr = cfg.env.lr
     num_workers = cfg.env.num_workers
     device = cfg.env.device
+    env_name = cfg.env.env_name
 
     # deviceの設定
     logger.info(f"{str(device)} is used for device")
@@ -564,6 +594,7 @@ def main(cfg: DictConfig):
             criterion,
             device,
             timer=None,
+            env_name=env_name,
         )
         _msg = "\n".join(
             [
