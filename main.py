@@ -13,7 +13,7 @@ import pandas
 import torch
 import torch.nn as nn
 import torchvision
-import tqdm as tqdm_module
+import tqdm as _tqdm
 import yaml
 from omegaconf import DictConfig, OmegaConf
 from PIL import Image
@@ -21,8 +21,6 @@ from torchvision import transforms
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"  # mute tensorflow warnings
 import tensorflow as tf
-
-tqdm = None
 
 
 def device_info():
@@ -374,13 +372,10 @@ class VQAModel(nn.Module):
 
 # 4. 学習の実装
 def train(model, dataloader, optimizer, criterion, device, timer=None, env_name=""):
-    global tqdm
-
-    if tqdm is None:
-        if env_name == "gcolab":
-            tqdm = tqdm_module.notebook.tqdm
-        else:
-            tqdm = tqdm_module.tqdm
+    if env_name == "gcolab":
+        from tqdm.notebook import tqdm
+    else:
+        from tqdm import tqdm
 
     model.train()
 
@@ -436,13 +431,10 @@ def train(model, dataloader, optimizer, criterion, device, timer=None, env_name=
 
 
 def eval(model, dataloader, optimizer, criterion, device, env_name=""):
-    global tqdm
-
-    if tqdm is None:
-        if env_name == "gcolab":
-            tqdm = tqdm_module.notebook.tqdm
-        else:
-            tqdm = tqdm_module.tqdm
+    if env_name == "gcolab":
+        from tqdm.notebook import tqdm
+    else:
+        from tqdm import tqdm
 
     model.eval()
 
