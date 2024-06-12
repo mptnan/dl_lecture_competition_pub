@@ -119,11 +119,8 @@ def process_text(text):
     for contraction, correct in contractions.items():
         text = text.replace(contraction, correct)
 
-    # 句読点をスペースに変換
+    # 半角英数字、空白文字、'、:以外をスペースに変換（マルチバイト文字は？）
     text = re.sub(r"[^\w\s':]", " ", text)
-
-    # 句読点をスペースに変換
-    text = re.sub(r"\s+,", ",", text)
 
     # 連続するスペースを1つに変換
     text = re.sub(r"\s+", " ", text).strip()
@@ -201,7 +198,7 @@ class VQADataset(torch.utils.data.Dataset):
         image = Image.open(f"{self.image_dir}/{self.df['image'][idx]}")
         image = self.transform(image)
         question = np.zeros(len(self.idx2question) + 1)  # 未知語用の要素を追加
-        question_words = self.df["question"][idx].split(" ")
+        question_words = process_text(self.df["question"][idx]).split(" ")
         for word in question_words:
             try:
                 question[self.question2idx[word]] = 1  # one-hot表現に変換
