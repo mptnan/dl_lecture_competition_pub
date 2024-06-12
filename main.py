@@ -470,7 +470,7 @@ def main(cfg: DictConfig):
     logger.info(f"{str(device)} is used for device")
 
     devices = device_info()
-    print(devices["info"])
+    logger.info("[devices]\n" + devices["info"])
     if device == "xla" and not devices["tpu"]["available"]:
         raise DeviceNotAvailable("tpu(xla) is not available")
     elif device == "cuda" and not devices["cuda"]["available"]:
