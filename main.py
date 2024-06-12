@@ -78,7 +78,19 @@ def process_text(text):
     text = text.lower()
 
     # 数詞を数字に変換
-    num_word_to_digit = {"zero": "0", "one": "1", "two": "2", "three": "3", "four": "4", "five": "5", "six": "6", "seven": "7", "eight": "8", "nine": "9", "ten": "10"}
+    num_word_to_digit = {
+        "zero": "0",
+        "one": "1",
+        "two": "2",
+        "three": "3",
+        "four": "4",
+        "five": "5",
+        "six": "6",
+        "seven": "7",
+        "eight": "8",
+        "nine": "9",
+        "ten": "10",
+    }
     for word, digit in num_word_to_digit.items():
         text = text.replace(word, digit)
 
@@ -89,7 +101,15 @@ def process_text(text):
     text = re.sub(r"\b(a|an|the)\b", "", text)
 
     # 短縮形のカンマの追加
-    contractions = {"dont": "don't", "isnt": "isn't", "arent": "aren't", "wont": "won't", "cant": "can't", "wouldnt": "wouldn't", "couldnt": "couldn't"}
+    contractions = {
+        "dont": "don't",
+        "isnt": "isn't",
+        "arent": "aren't",
+        "wont": "won't",
+        "cant": "can't",
+        "wouldnt": "wouldn't",
+        "couldnt": "couldn't",
+    }
     for contraction, correct in contractions.items():
         text = text.replace(contraction, correct)
 
@@ -231,7 +251,10 @@ class BasicBlock(nn.Module):
 
         self.shortcut = nn.Sequential()
         if stride != 1 or in_channels != out_channels:
-            self.shortcut = nn.Sequential(nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride), nn.BatchNorm2d(out_channels))
+            self.shortcut = nn.Sequential(
+                nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=stride),
+                nn.BatchNorm2d(out_channels),
+            )
 
     def forward(self, x):
         residual = x
@@ -260,7 +283,10 @@ class BottleneckBlock(nn.Module):
 
         self.shortcut = nn.Sequential()
         if stride != 1 or in_channels != out_channels * self.expansion:
-            self.shortcut = nn.Sequential(nn.Conv2d(in_channels, out_channels * self.expansion, kernel_size=1, stride=stride), nn.BatchNorm2d(out_channels * self.expansion))
+            self.shortcut = nn.Sequential(
+                nn.Conv2d(in_channels, out_channels * self.expansion, kernel_size=1, stride=stride),
+                nn.BatchNorm2d(out_channels * self.expansion),
+            )
 
     def forward(self, x):
         residual = x
@@ -358,7 +384,12 @@ def train(model, dataloader, optimizer, criterion, device, timer=None):
         if timer is not None:
             timer.push(tag="load_data")
 
-        image, question, answer, mode_answer = image.to(device), question.to(device), answers.to(device), mode_answer.to(device)
+        image, question, answers, mode_answer = (
+            image.to(device),
+            question.to(device),
+            answers.to(device),
+            mode_answer.to(device),
+        )
         if timer is not None:
             timer.push(tag="to_device")
 
@@ -397,7 +428,12 @@ def eval(model, dataloader, optimizer, criterion, device):
 
     start = time.time()
     for image, question, answers, mode_answer in dataloader:
-        image, question, answer, mode_answer = image.to(device), question.to(device), answers.to(device), mode_answer.to(device)
+        image, question, answers, mode_answer = (
+            image.to(device),
+            question.to(device),
+            answers.to(device),
+            mode_answer.to(device),
+        )
 
         pred = model(image, question)
         loss = criterion(pred, mode_answer.squeeze())
@@ -482,8 +518,17 @@ def main(cfg: DictConfig):
     train_timer = Timer()
 
     # dataloader / model
-    transform = transforms.Compose([transforms.Resize((224, 224)), transforms.ToTensor()])
-    train_dataset = VQADataset(df_path="./data/train.json", image_dir="./data/train", transform=transform)
+    transform = transforms.Compose(
+        [
+            transforms.Resize((224, 224)),
+            transforms.ToTensor(),
+        ]
+    )
+    train_dataset = VQADataset(
+        df_path="./data/train.json",
+        image_dir="./data/train",
+        transform=transform,
+    )
     test_dataset = VQADataset(df_path="./data/valid.json", image_dir="./data/valid", transform=transform, answer=False)
     test_dataset.update_dict(train_dataset)
 
@@ -512,20 +557,40 @@ def main(cfg: DictConfig):
     # train model
     # 10 mins of TPU / epoch
     for epoch in range(num_epoch):
-        train_loss, train_acc, train_simple_acc, train_time = train(model, train_loader, optimizer, criterion, device, timer=train_timer)
-        logger.info(
-            f"【{epoch + 1}/{num_epoch}】\n" f"train time: {train_time:.2f} [s]\n" f"train loss: {train_loss:.4f}\n" f"train acc: {train_acc:.4f}\n" f"train simple acc: {train_simple_acc:.4f}"
+        train_loss, train_acc, train_simple_acc, train_time = train(
+            model,
+            train_loader,
+            optimizer,
+            criterion,
+            device,
+            timer=None,
         )
+        _msg = "\n".join(
+            [
+                f"epoch【{epoch + 1}/{num_epoch}】",
+                f"train time: {train_time:.2f} [s]",
+                f"train loss: {train_loss:.4f}",
+                f"train acc: {train_acc:.4f}",
+                f"train simple acc: {train_simple_acc:.4f}",
+            ]
+        )
+        logger.info(_msg)
         epoch_timer.push()
         logger.info(f"epoch took {epoch_timer.last_lap()/60:.2f} minutes")
 
         if "load_data" in train_timer._tag_laps.keys():
-            logger.info(f"load_data took {train_timer.average_lap_tag('load_data'):.2e} secs average")
-            logger.info(f"to_device took {train_timer.average_lap_tag('to_device'):.2e} secs average")
-            logger.info(f"pred took {train_timer.average_lap_tag('pred'):.2e} secs average")
-            logger.info(f"calc_loss took {train_timer.average_lap_tag('calc_loss'):.2e} secs average")
-            logger.info(f"backward took {train_timer.average_lap_tag('backward'):.2e} secs average")
-            logger.info(f"step took {train_timer.average_lap_tag('step'):.2e} secs average")
+            _msg = "\n".join(
+                [
+                    "[train_timer] average secs",
+                    f"load_data: {train_timer.average_lap_tag('load_data'):.2e}",
+                    f"to_device took {train_timer.average_lap_tag('to_device'):.2e} secs average",
+                    f"pred took {train_timer.average_lap_tag('pred'):.2e} secs average",
+                    f"calc_loss took {train_timer.average_lap_tag('calc_loss'):.2e} secs average",
+                    f"backward took {train_timer.average_lap_tag('backward'):.2e} secs average",
+                    f"step took {train_timer.average_lap_tag('step'):.2e} secs average",
+                ]
+            )
+            logger.info(_msg)
 
     # 提出用ファイルの作成
     model.eval()
