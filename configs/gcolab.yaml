@@ -1,2 +1,2 @@
 output_dir: /content/drive/MyDrive/Colab Notebooks/DLBasics2023_colab/Competition/vqa/outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}
-
+device: cuda

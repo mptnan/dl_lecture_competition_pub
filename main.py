@@ -1,3 +1,4 @@
+import multiprocessing
 import random
 import re
 import time
@@ -8,12 +9,44 @@ from statistics import mode
 import hydra
 import numpy as np
 import pandas
+import tensorflow as tf
 import torch
 import torch.nn as nn
 import torchvision
+import yaml
 from omegaconf import DictConfig, OmegaConf
 from PIL import Image
 from torchvision import transforms
+
+
+def device_info():
+    devices = {}
+
+    # tpu
+    devices["tpu"] = {}
+    try:
+        tpu = tf.distribute.cluster_resolver.TPUClusterResolver()  # TPU detection
+        devices["tpu"]["available"] = True
+        devices["tpu"]["num_accelerators"] = tpu.num_accelerators()["TPU"]
+    except ValueError:
+        devices["tpu"]["available"] = False
+
+    # gpu cuda
+    devices["cuda"] = {}
+    if torch.cuda.is_available():
+        devices["cuda"]["available"] = True
+        devices["cuda"]["device_count"] = torch.cuda.device_count()
+    else:
+        devices["cuda"]["available"] = False
+
+    # cpu
+    devices["cpu"] = {}
+    devices["cpu"]["available"] = True
+    devices["cpu"]["cpu_count"] = multiprocessing.cpu_count()
+
+    devices["info"] = "available devices:\n" + yaml.dump(devices)
+
+    return devices
 
 
 def set_seed(seed):
@@ -412,23 +445,36 @@ class Timer:
         return sum(self._tag_laps[tag]) / len(self._tag_laps[tag])
 
 
+class DeviceNotAvailable(RuntimeError):
+    pass
+
+
 @hydra.main(version_base=None, config_path="configs", config_name="config")
 def main(cfg: DictConfig):
     logger = prepare_logger()
     logger.info("[configuration]\n" + OmegaConf.to_yaml(cfg))
-
-    # deviceの設定
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    logger.info(f"{str(device)} is used for device")
 
     # redefine all cfg variables
     seed = cfg.env.seed
     num_epoch = cfg.env.num_epoch
     lr = cfg.env.lr
     num_workers = cfg.env.num_workers
+    device = cfg.env.device
+
+    # deviceの設定
+    logger.info(f"{str(device)} is used for device")
 
     hydra_output_dir = Path(hydra.core.hydra_config.HydraConfig.get().runtime.output_dir)
     logger.info(f"output into {hydra_output_dir}")
+
+    logger.info(f"{str(device)} is used for device")
+
+    devices = device_info()
+    print(devices["info"])
+    if device == "xla" and not devices["tpu"]["available"]:
+        raise DeviceNotAvailable("tpu(xla) is not available")
+    elif device == "cuda" and not devices["cuda"]["available"]:
+        raise DeviceNotAvailable("gpu(cuda) is not available")
 
     set_seed(seed)
 
