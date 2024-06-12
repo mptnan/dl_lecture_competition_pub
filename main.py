@@ -1,4 +1,5 @@
 import multiprocessing
+import os
 import random
 import re
 import time
@@ -9,7 +10,6 @@ from statistics import mode
 import hydra
 import numpy as np
 import pandas
-import tensorflow as tf
 import torch
 import torch.nn as nn
 import torchvision
@@ -18,6 +18,9 @@ import yaml
 from omegaconf import DictConfig, OmegaConf
 from PIL import Image
 from torchvision import transforms
+
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"  # mute tensorflow warnings
+import tensorflow as tf
 
 tqdm = None
 
