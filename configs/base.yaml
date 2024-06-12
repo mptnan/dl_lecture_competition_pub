@@ -2,3 +2,4 @@ seed: 1234
 num_epoch: 20
 lr: 0.001
 output_dir: ./outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}
+num_workers: 0
