@@ -386,46 +386,45 @@ def train(model, dataloader, optimizer, criterion, device, timer=None, env_name=
     start = time.time()
     if timer is not None:
         timer.push()
-    with tqdm(
-        enumerate(dataloader),
+    for image, question, answers, mode_answer in tqdm(
+        dataloader,
         total=len(dataloader),
         leave=False,
-    ) as pbar:
-        for i, (image, question, answers, mode_answer) in pbar:
-            if timer is not None:
-                timer.push(tag="load_data")
+    ):
+        if timer is not None:
+            timer.push(tag="load_data")
 
-            image, question, answers, mode_answer = (
-                image.to(device),
-                question.to(device),
-                answers.to(device),
-                mode_answer.to(device),
-            )
-            if timer is not None:
-                timer.push(tag="to_device")
+        image, question, answers, mode_answer = (
+            image.to(device),
+            question.to(device),
+            answers.to(device),
+            mode_answer.to(device),
+        )
+        if timer is not None:
+            timer.push(tag="to_device")
 
-            pred = model(image, question)
-            if timer is not None:
-                timer.push(tag="pred")
+        pred = model(image, question)
+        if timer is not None:
+            timer.push(tag="pred")
 
-            loss = criterion(pred, mode_answer.squeeze())
-            if timer is not None:
-                timer.push(tag="calc_loss")
+        loss = criterion(pred, mode_answer.squeeze())
+        if timer is not None:
+            timer.push(tag="calc_loss")
 
-            optimizer.zero_grad()
-            loss.backward()
-            if timer is not None:
-                timer.push(tag="backward")
+        optimizer.zero_grad()
+        loss.backward()
+        if timer is not None:
+            timer.push(tag="backward")
 
-            optimizer.step()
-            if timer is not None:
-                timer.push(tag="step")
+        optimizer.step()
+        if timer is not None:
+            timer.push(tag="step")
 
-            total_loss += loss.item()
-            total_acc += VQA_criterion(pred.argmax(1), answers)  # VQA accuracy
-            simple_acc += (pred.argmax(1) == mode_answer).float().mean().item()  # simple accuracy
-            if timer is not None:
-                timer.push()
+        total_loss += loss.item()
+        total_acc += VQA_criterion(pred.argmax(1), answers)  # VQA accuracy
+        simple_acc += (pred.argmax(1) == mode_answer).float().mean().item()  # simple accuracy
+        if timer is not None:
+            timer.push()
 
     return total_loss / len(dataloader), total_acc / len(dataloader), simple_acc / len(dataloader), time.time() - start
 
@@ -443,25 +442,24 @@ def eval(model, dataloader, optimizer, criterion, device, env_name=""):
     simple_acc = 0
 
     start = time.time()
-    with tqdm(
-        enumerate(dataloader),
+    for image, question, answers, mode_answer in tqdm(
+        dataloader,
         total=len(dataloader),
         leave=False,
-    ) as pbar:
-        for i, (image, question, answers, mode_answer) in pbar:
-            image, question, answers, mode_answer = (
-                image.to(device),
-                question.to(device),
-                answers.to(device),
-                mode_answer.to(device),
-            )
+    ):
+        image, question, answers, mode_answer = (
+            image.to(device),
+            question.to(device),
+            answers.to(device),
+            mode_answer.to(device),
+        )
 
-            pred = model(image, question)
-            loss = criterion(pred, mode_answer.squeeze())
+        pred = model(image, question)
+        loss = criterion(pred, mode_answer.squeeze())
 
-            total_loss += loss.item()
-            total_acc += VQA_criterion(pred.argmax(1), answers)  # VQA accuracy
-            simple_acc += (pred.argmax(1) == mode_answer).mean().item()  # simple accuracy
+        total_loss += loss.item()
+        total_acc += VQA_criterion(pred.argmax(1), answers)  # VQA accuracy
+        simple_acc += (pred.argmax(1) == mode_answer).mean().item()  # simple accuracy
 
     return total_loss / len(dataloader), total_acc / len(dataloader), simple_acc / len(dataloader), time.time() - start
 
@@ -525,6 +523,7 @@ def main(cfg: DictConfig):
     hydra_output_dir = Path(hydra.core.hydra_config.HydraConfig.get().runtime.output_dir)
     logger.info(f"output into {hydra_output_dir}")
     runtime_output_dir = Path(cfg.env.runtime_output_dir)
+    runtime_output_dir.mkdir(parents=True, exist_ok=True)
     logger.info(f"runtime output into {runtime_output_dir}")
 
     devices = device_info()
