@@ -6,3 +6,5 @@ output_dir: ./outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}
 runtime_output_dir: ${output_dir}
 num_workers: 0
 device: cpu
+ask_save_model: true
+default_save_model: false

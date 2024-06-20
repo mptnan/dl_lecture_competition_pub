@@ -2,6 +2,7 @@ import multiprocessing
 import os
 import random
 import re
+import shutil
 import time
 from logging import DEBUG, INFO, Formatter, StreamHandler, getLogger
 from pathlib import Path
@@ -494,6 +495,15 @@ class DeviceNotAvailable(RuntimeError):
     pass
 
 
+def get_yes_no(msg):
+    while True:
+        reply = str(input(msg + " (Y/n): ")).lower().strip()
+        if reply == "y":
+            return True
+        if reply == "n":
+            return False
+
+
 @hydra.main(version_base=None, config_path="configs", config_name="config")
 def main(cfg: DictConfig):
     logger = prepare_logger()
@@ -506,6 +516,8 @@ def main(cfg: DictConfig):
     num_workers = cfg.env.num_workers
     device = cfg.env.device
     env_name = cfg.env.env_name
+    ask_save_model = cfg.env.ask_save_model
+    default_save_model = cfg.env.default_save_model
 
     # deviceの設定
     logger.info(f"{str(device)} is used for device")
@@ -624,6 +636,13 @@ def main(cfg: DictConfig):
     submission = np.array(submission)
     torch.save(model.state_dict(), runtime_output_dir / "model.pth")
     np.save(hydra_output_dir / "submission.npy", submission)
+
+    if runtime_output_dir.resolve() != hydra_output_dir.resolve():
+        if ask_save_model:
+            if get_yes_no("Do you save the trained model?"):
+                shutil.copyfile(runtime_output_dir / "model.pth", hydra_output_dir)
+        elif default_save_model:
+            shutil.copyfile(runtime_output_dir / "model.pth", hydra_output_dir)
 
 
 if __name__ == "__main__":
