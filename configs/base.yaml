@@ -3,5 +3,6 @@ seed: 1234
 num_epoch: 20
 lr: 0.001
 output_dir: ./outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}
+runtime_output_dir: ${output_dir}
 num_workers: 0
 device: cpu

@@ -524,6 +524,8 @@ def main(cfg: DictConfig):
 
     hydra_output_dir = Path(hydra.core.hydra_config.HydraConfig.get().runtime.output_dir)
     logger.info(f"output into {hydra_output_dir}")
+    runtime_output_dir = Path(cfg.env.runtime_output_dir)
+    logger.info(f"runtime output into {runtime_output_dir}")
 
     devices = device_info()
     logger.info("[devices]\n" + devices["info"])
@@ -631,7 +633,7 @@ def main(cfg: DictConfig):
 
     submission = [train_dataset.idx2answer[id] for id in submission]
     submission = np.array(submission)
-    torch.save(model.state_dict(), hydra_output_dir / "model.pth")
+    torch.save(model.state_dict(), runtime_output_dir / "model.pth")
     np.save(hydra_output_dir / "submission.npy", submission)
 
 
