@@ -640,9 +640,9 @@ def main(cfg: DictConfig):
     if runtime_output_dir.resolve() != hydra_output_dir.resolve():
         if ask_save_model:
             if get_yes_no("Do you save the trained model?"):
-                shutil.copyfile(runtime_output_dir / "model.pth", hydra_output_dir)
+                shutil.copyfile(runtime_output_dir / "model.pth", hydra_output_dir / "model.pth")
         elif default_save_model:
-            shutil.copyfile(runtime_output_dir / "model.pth", hydra_output_dir)
+            shutil.copyfile(runtime_output_dir / "model.pth", hydra_output_dir / "model.pth")
 
 
 if __name__ == "__main__":
