@@ -13,11 +13,11 @@ import pandas
 import torch
 import torch.nn as nn
 import torchvision
-import tqdm as _tqdm
 import yaml
 from omegaconf import DictConfig, OmegaConf
 from PIL import Image
 from torchvision import transforms
+from tqdm import tqdm
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"  # mute tensorflow warnings
 import tensorflow as tf
@@ -372,11 +372,6 @@ class VQAModel(nn.Module):
 
 # 4. 学習の実装
 def train(model, dataloader, optimizer, criterion, device, timer=None, env_name=""):
-    if env_name == "gcolab":
-        from tqdm.notebook import tqdm
-    else:
-        from tqdm import tqdm
-
     model.train()
 
     total_loss = 0
@@ -430,11 +425,6 @@ def train(model, dataloader, optimizer, criterion, device, timer=None, env_name=
 
 
 def eval(model, dataloader, optimizer, criterion, device, env_name=""):
-    if env_name == "gcolab":
-        from tqdm.notebook import tqdm
-    else:
-        from tqdm import tqdm
-
     model.eval()
 
     total_loss = 0
