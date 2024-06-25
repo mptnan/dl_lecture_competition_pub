@@ -372,7 +372,7 @@ class VQAModel(nn.Module):
 
 
 # 4. 学習の実装
-def train(model, dataloader, optimizer, criterion, device, timer=None, env_name=""):
+def train(model, dataloader, optimizer, criterion, device, timer=None):
     model.train()
 
     total_loss = 0
@@ -425,7 +425,7 @@ def train(model, dataloader, optimizer, criterion, device, timer=None, env_name=
     return total_loss / len(dataloader), total_acc / len(dataloader), simple_acc / len(dataloader), time.time() - start
 
 
-def eval(model, dataloader, optimizer, criterion, device, env_name=""):
+def eval(model, dataloader, optimizer, criterion, device):
     model.eval()
 
     total_loss = 0
