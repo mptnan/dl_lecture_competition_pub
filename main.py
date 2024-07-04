@@ -79,6 +79,9 @@ def prepare_logger():
 
 
 def process_text(text):
+    """
+    sentence: str -> processed sentence: str
+    """
     # lowercase
     text = text.lower()
 
@@ -198,9 +201,11 @@ class VQADataset(torch.utils.data.Dataset):
         image = self.transform(image)
         question = np.zeros(len(self.idx2question) + 1)  # 未知語用の要素を追加
         question_words = process_text(self.df["question"][idx]).split(" ")
+
+        # question: idxの質問文に含まれる単語に1それ以外に0の入ったベクトル
         for word in question_words:
             try:
-                question[self.question2idx[word]] = 1  # one-hot表現に変換
+                question[self.question2idx[word]] = 1
             except KeyError:
                 question[-1] = 1  # 未知語
 
@@ -330,16 +335,16 @@ class ResNet(nn.Module):
         return nn.Sequential(*layers)
 
     def forward(self, x):
-        x = self.relu(self.bn1(self.conv1(x)))
+        x = self.relu(self.bn1(self.conv1(x)))  # (*, C=3, H, W) -> (*, 64, H2, W2)
         x = self.maxpool(x)
 
         x = self.layer1(x)
         x = self.layer2(x)
         x = self.layer3(x)
-        x = self.layer4(x)
+        x = self.layer4(x)  # -> (*, 512, H3, W3)
 
-        x = self.avgpool(x)
-        x = x.view(x.size(0), -1)
+        x = self.avgpool(x)  # -> (*, 512, 1, 1)
+        x = x.view(x.size(0), -1)  # -> (*, 512)
         x = self.fc(x)
 
         return x
@@ -356,12 +361,17 @@ def ResNet50():
 class VQAModel(nn.Module):
     def __init__(self, vocab_size: int, n_answer: int):
         super().__init__()
-        self.resnet = ResNet18()
-        self.text_encoder = nn.Linear(vocab_size, 512)
+        self.resnet = ResNet18()  #
+        self.text_encoder = nn.Linear(vocab_size, 512)  # (*, vocab_size) -> (*, 512)
 
-        self.fc = nn.Sequential(nn.Linear(1024, 512), nn.ReLU(inplace=True), nn.Linear(512, n_answer))
+        self.fc = nn.Sequential(
+            nn.Linear(1024, 512),
+            nn.ReLU(inplace=True),
+            nn.Linear(512, n_answer),
+        )
 
     def forward(self, image, question):
+        # image: (*, C, H, W)
         image_feature = self.resnet(image)  # 画像の特徴量
         question_feature = self.text_encoder(question)  # テキストの特徴量
 
@@ -372,7 +382,14 @@ class VQAModel(nn.Module):
 
 
 # 4. 学習の実装
-def train(model, dataloader, optimizer, criterion, device, timer=None):
+def train(
+    model,
+    dataloader,
+    optimizer,
+    criterion,
+    device,
+    timer=None,
+):
     model.train()
 
     total_loss = 0
@@ -425,7 +442,13 @@ def train(model, dataloader, optimizer, criterion, device, timer=None):
     return total_loss / len(dataloader), total_acc / len(dataloader), simple_acc / len(dataloader), time.time() - start
 
 
-def eval(model, dataloader, optimizer, criterion, device):
+def eval(
+    model,
+    dataloader,
+    optimizer,
+    criterion,
+    device,
+):
     model.eval()
 
     total_loss = 0
