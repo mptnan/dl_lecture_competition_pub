@@ -7,7 +7,6 @@ import numpy as np
 import pandas as pd
 import torch
 import torch.nn as nn
-import torchvision
 from omegaconf import DictConfig, OmegaConf
 from torchtext.data.utils import get_tokenizer
 from torchvision import transforms
