@@ -1,13 +1,15 @@
 import re
+from collections import Counter
 from statistics import mode
 
 import numpy as np
 import pandas as pd
 import torch
 from PIL import Image
+from torchtext.vocab import Vocab, vocab
 
 
-def process_text(text):
+def process_text(text: str) -> str:
     """
     sentence: str -> processed sentence: str
     """
@@ -59,7 +61,44 @@ def process_text(text):
     return text
 
 
-# 1. データローダーの作成
+class CustomVocab:
+    """ """
+
+    def __init__(self, text_processor, tokenizer):
+        self._counter = Counter()
+        self._text_processor = text_processor
+        self._tokenizer = tokenizer
+        self.vocab = None
+
+    def add_sentence(self, sentence: str) -> None:
+        self._counter.update(self._tokenizer(self._text_processor(sentence)))
+
+    def set_vocab(self, min_freq: int):
+        self.vocab = vocab(
+            self._counter,
+            min_freq=min_freq,
+            specials=["<unk>", "<PAD>", "<BOS>", "<EOS>"],
+        )
+        self.vocab.set_default_index(self.vocab["<unk>"])
+
+    def to_tensor(self, sentence: str, lsize: int) -> torch.Tensor:
+        sentence = self._text_processor(sentence)
+        text = [self.vocab[token] for token in self._tokenizer(sentence)][: lsize - 2]
+        text = [self.vocab["<BOS>"]] + text + [self.vocab["<EOS>"]]
+        pad = [self.vocab["<PAD>"]] * (lsize - len(text))
+
+        return torch.tensor(text + pad, dtype=torch.int)
+
+    def itow(self, idx: int):
+        return self.vocab.get_itos()[idx]
+
+    def wtoi(self, word: str):
+        return self.vocab[self._text_processor(word)]
+
+    def __len__(self):
+        return len(self.vocab)
+
+
 class VQADataset(torch.utils.data.Dataset):
     def __init__(self, df_path, image_dir, transform=None, answer=True):
         self.transform = transform  # 画像の前処理
@@ -146,6 +185,66 @@ class VQADataset(torch.utils.data.Dataset):
 
         else:
             return image, torch.Tensor(question)
+
+    def __len__(self):
+        return len(self.df)
+
+
+class VQACorpusDataset(torch.utils.data.Dataset):
+    def __init__(
+        self,
+        df_path,
+        image_dir,
+        len_sentence,
+        vocab,
+        transform=None,
+        answer=True,
+        answer_vocab=None,
+    ):
+        self.transform = transform  # 画像の前処理
+        self.image_dir = image_dir  # 画像ファイルのディレクトリ
+        self.df = pd.read_json(df_path)  # 画像ファイルのパス，question, answerを持つDataFrame
+
+        self.questions = []  # (n_questions, len_sentence)
+        for question in self.df["question"]:
+            words = vocab.to_tensor(question, len_sentence)  # (len_sentence,)
+            self.questions.append(words)
+
+        self.answer = answer
+        if self.answer:
+            self.answer_vocab = answer_vocab
+
+    def __getitem__(self, idx):
+        """
+        対応するidxのデータ（画像，質問，回答）を取得．
+
+        Parameters
+        ----------
+        idx : int
+            取得するデータのインデックス
+
+        Returns
+        -------
+        image : torch.Tensor  (C, H, W)
+            画像データ
+        question : torch.Tensor  (vocab_size, n_words_in_sentence)
+            質問文をone-hot表現に変換したもの
+        answers : torch.Tensor  (n_answer)
+            10人の回答者の回答のid
+        mode_answer_idx : torch.Tensor  (1)
+            10人の回答者の回答の中で最頻値の回答のid
+        """
+        image = Image.open(f"{self.image_dir}/{self.df['image'][idx]}")
+        image = self.transform(image)
+
+        if self.answer:
+            answers = [self.answer_vocab.wtoi(answer["answer"]) for answer in self.df["answers"][idx]]  # :list[int]
+            mode_answer_idx = mode(answers)  # 最頻値を取得（正解ラベル）
+
+            return image, self.questions[idx], torch.Tensor(answers), int(mode_answer_idx)
+
+        else:
+            return image, self.questions[idx]
 
     def __len__(self):
         return len(self.df)

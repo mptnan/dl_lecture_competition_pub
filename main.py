@@ -4,14 +4,39 @@ from pathlib import Path
 
 import hydra
 import numpy as np
+import pandas as pd
 import torch
 import torch.nn as nn
 import torchvision
 from omegaconf import DictConfig, OmegaConf
+from torchtext.data.utils import get_tokenizer
 from torchvision import transforms
 from tqdm import tqdm
 
-from src import ResNet18, VQADataset, device_info, get_yes_no, prepare_logger, set_seed
+from src import (
+    CustomVocab,
+    ResNet18,
+    VQACorpusDataset,
+    device_info,
+    get_yes_no,
+    prepare_logger,
+    process_text,
+    set_seed,
+)
+
+
+def get_all_sentences():
+    res = []
+    for p in ["./data/train.json", "./data/valid.json"]:
+        df = pd.read_json(p)
+        res.extend(list(df["question"]))
+
+    return res
+
+
+def get_answers():
+    df = pd.read_csv("./data/class_mapping.csv")
+    return list(df["answer"])
 
 
 # 2. 評価指標の実装
@@ -38,7 +63,9 @@ class VQAModel(nn.Module):
     def __init__(self, vocab_size: int, n_answer: int):
         super().__init__()
         self.resnet = ResNet18()  #
-        self.text_encoder = nn.Linear(vocab_size, 512)  # (*, vocab_size) -> (*, 512)
+        self.text_encoder = nn.Sequential(
+            nn.Linear(vocab_size, 512),  # (*, vocab_size) -> (*, 512)
+        )
 
         self.fc = nn.Sequential(
             nn.Linear(1024, 512),
@@ -50,6 +77,43 @@ class VQAModel(nn.Module):
         # image: (*, C, H, W)
         image_feature = self.resnet(image)  # 画像の特徴量
         question_feature = self.text_encoder(question)  # テキストの特徴量
+
+        x = torch.cat([image_feature, question_feature], dim=1)
+        x = self.fc(x)
+
+        return x
+
+
+class VQAEmbeddingModel(nn.Module):
+    def __init__(
+        self,
+        vocab_size: int,
+        embedding_dim: int,
+        n_answer: int,
+    ):
+        super().__init__()
+        self.resnet = ResNet18()  #
+        self.embed = nn.Embedding(num_embeddings=vocab_size, embedding_dim=embedding_dim)
+        self.lstm = nn.LSTM(
+            input_size=embedding_dim,
+            hidden_size=512,
+            batch_first=True,
+        )
+
+        self.fc = nn.Sequential(
+            nn.Linear(1024, 512),
+            nn.ReLU(inplace=True),
+            nn.Linear(512, n_answer),
+        )
+
+    def forward(self, image, question):
+        # image: (*, C, H, W)
+        # question: (*, L)  L: length of a sentence
+        image_feature = self.resnet(image)  # 画像の特徴量
+
+        question = self.embed(question)
+        _, (h, _) = self.lstm(question)
+        question_feature = torch.squeeze(h, dim=0)  # (*, Hidden)
 
         x = torch.cat([image_feature, question_feature], dim=1)
         x = self.fc(x)
@@ -244,13 +308,39 @@ def main(cfg: DictConfig):
             transforms.ToTensor(),
         ]
     )
-    train_dataset = VQADataset(
+
+    # make vocab
+    all_sentences = get_all_sentences()
+    vocab = CustomVocab(text_processor=process_text, tokenizer=get_tokenizer("basic_english"))
+    for s in all_sentences:
+        vocab.add_sentence(s)
+    vocab.set_vocab(min_freq=25)
+
+    # make answers list
+    answers = get_answers()
+    answer_vocab = CustomVocab(text_processor=process_text, tokenizer=lambda x: [x])
+    for a in answers:
+        answer_vocab.add_sentence(a)
+    answer_vocab.set_vocab(min_freq=1)
+
+    train_dataset = VQACorpusDataset(
         df_path="./data/train.json",
         image_dir="./data/train",
+        len_sentence=256,
+        vocab=vocab,
         transform=transform,
+        answer=True,
+        answer_vocab=answer_vocab,
     )
-    test_dataset = VQADataset(df_path="./data/valid.json", image_dir="./data/valid", transform=transform, answer=False)
-    test_dataset.update_dict(train_dataset)
+
+    test_dataset = VQACorpusDataset(
+        df_path="./data/valid.json",
+        image_dir="./data/valid",
+        len_sentence=256,
+        vocab=vocab,
+        transform=transform,
+        answer=False,
+    )
 
     train_loader = torch.utils.data.DataLoader(
         train_dataset,
@@ -265,7 +355,11 @@ def main(cfg: DictConfig):
         num_workers=num_workers,
     )
 
-    model = VQAModel(vocab_size=len(train_dataset.question2idx) + 1, n_answer=len(train_dataset.answer2idx)).to(device)
+    model = VQAEmbeddingModel(
+        vocab_size=len(vocab.vocab),
+        embedding_dim=512,
+        n_answer=len(answer_vocab),
+    )
 
     # optimizer / criterion
     criterion = nn.CrossEntropyLoss()
