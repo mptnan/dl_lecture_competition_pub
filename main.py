@@ -284,7 +284,6 @@ def main(cfg: DictConfig):
             criterion,
             device,
             timer=None,
-            env_name=env_name,
         )
         _msg = "\n".join(
             [
