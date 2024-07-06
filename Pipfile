@@ -16,6 +16,7 @@ termcolor = "*"
 pandas = "*"
 tensorflow = "*"
 pyyaml = "*"
+torchtext = "*"
 
 [dev-packages]
 
