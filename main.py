@@ -415,7 +415,7 @@ def main(cfg: DictConfig):
         pred = pred.argmax(1).cpu().item()
         submission.append(pred)
 
-    submission = [train_dataset.idx2answer[id] for id in submission]
+    submission = [answer_vocab.itow(id) for id in submission]
     submission = np.array(submission)
     torch.save(model.state_dict(), runtime_output_dir / "model.pth")
     np.save(hydra_output_dir / "submission.npy", submission)
