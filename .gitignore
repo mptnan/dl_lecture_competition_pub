@@ -1,2 +1,3 @@
-data/
+data/*
+!data/class_mapping.csv
 outputs/*
