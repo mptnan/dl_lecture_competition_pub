@@ -359,7 +359,7 @@ def main(cfg: DictConfig):
         vocab_size=len(vocab.vocab),
         embedding_dim=512,
         n_answer=len(answer_vocab),
-    )
+    ).to(device)
 
     # optimizer / criterion
     criterion = nn.CrossEntropyLoss()
