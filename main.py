@@ -339,13 +339,6 @@ def main(cfg: DictConfig):
         answer_vocab=answer_vocab,
     )
 
-    cont = 0
-    for _, q, a, m in trainval_dataset:
-        print(answer_vocab.itow(m))
-        if cont > 10:
-            exit()
-        cont += 1
-
     test_dataset = VQACorpusDataset(
         df_path="./data/valid.json",
         image_dir="./data/valid",
