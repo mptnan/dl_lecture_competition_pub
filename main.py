@@ -34,8 +34,15 @@ def get_all_sentences():
 
 
 def get_answers():
+    res = []
     df = pd.read_csv("./data/class_mapping.csv")
-    return list(df["answer"])
+    res.extend(list(df["answer"]))
+    for p in ["./data/train.json"]:
+        df = pd.read_json(p)
+        for dd in df["answers"]:
+            for each_answer in dd:
+                res.append(each_answer["answer"])
+    return list(res)
 
 
 # 2. 評価指標の実装
@@ -108,6 +115,7 @@ class VQAEmbeddingModel(nn.Module):
     def forward(self, image, question):
         # image: (*, C, H, W)
         # question: (*, L)  L: length of a sentence
+        # -> (*, n_answer)
         image_feature = self.resnet(image)  # 画像の特徴量
 
         question = self.embed(question)
@@ -331,6 +339,13 @@ def main(cfg: DictConfig):
         answer_vocab=answer_vocab,
     )
 
+    cont = 0
+    for _, q, a, m in trainval_dataset:
+        print(answer_vocab.itow(m))
+        if cont > 10:
+            exit()
+        cont += 1
+
     test_dataset = VQACorpusDataset(
         df_path="./data/valid.json",
         image_dir="./data/valid",
@@ -373,7 +388,7 @@ def main(cfg: DictConfig):
     )
 
     model = VQAEmbeddingModel(
-        vocab_size=len(vocab.vocab),
+        vocab_size=len(vocab),
         embedding_dim=512,
         n_answer=len(answer_vocab),
     ).to(device)
