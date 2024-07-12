@@ -1,9 +1,10 @@
 import json
 import re
 from collections import Counter
+from collections.abc import Callable
 from dataclasses import dataclass
 from statistics import mode, multimode
-from typing import Mapping
+from typing import Literal, Mapping, Optional, Union
 
 import numpy as np
 import pandas as pd
@@ -67,7 +68,7 @@ def process_text(text: str) -> str:
 class CustomVocab:
     """ """
 
-    def __init__(self, text_processor, tokenizer):
+    def __init__(self, text_processor: Callable[[str], str], tokenizer: Callable[[str], list[str]]):
         self._counter = Counter()
         self._text_processor = text_processor
         self._tokenizer = tokenizer
@@ -103,7 +104,13 @@ class CustomVocab:
 
 
 class VQADataset(torch.utils.data.Dataset):
-    def __init__(self, df_path, image_dir, transform=None, answer=True):
+    def __init__(
+        self,
+        df_path: str,
+        image_dir: str,
+        transform: Optional[torch.transforms.Compose] = None,
+        answer: bool = True,
+    ):
         self.transform = transform  # 画像の前処理
         self.image_dir = image_dir  # 画像ファイルのディレクトリ
         self.df = pd.read_json(df_path)  # 画像ファイルのパス，question, answerを持つDataFrame
@@ -134,7 +141,7 @@ class VQADataset(torch.utils.data.Dataset):
                         self.answer2idx[word] = len(self.answer2idx)
             self.idx2answer = {v: k for k, v in self.answer2idx.items()}  # 逆変換用の辞書(answer)
 
-    def update_dict(self, dataset):
+    def update_dict(self, dataset: torch.utils.data.Dataset):
         """
         検証用データ，テストデータの辞書を訓練データの辞書に更新する．
 
@@ -148,7 +155,18 @@ class VQADataset(torch.utils.data.Dataset):
         self.idx2question = dataset.idx2question
         self.idx2answer = dataset.idx2answer
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx: int) -> Union[
+        tuple[
+            torch.Tensor,
+            torch.Tensor,
+            torch.Tensor,
+            torch.Tensor,
+        ],
+        tuple[
+            torch.Tensor,
+            torch.Tensor,
+        ],
+    ]:
         """
         対応するidxのデータ（画像，質問，回答）を取得．
 
@@ -196,13 +214,13 @@ class VQADataset(torch.utils.data.Dataset):
 class VQACorpusDataset(torch.utils.data.Dataset):
     def __init__(
         self,
-        df_path,
-        image_dir,
-        len_sentence,
-        vocab,
-        transform=None,
-        answer=True,
-        answer_vocab=None,
+        df_path: str,
+        image_dir: str,
+        len_sentence: int,
+        vocab: CustomVocab,
+        transform: Optional[torch.transforms.Compose] = None,
+        answer: bool = True,
+        answer_vocab: Optional[CustomVocab] = None,
     ):
         self.transform = transform  # 画像の前処理
         self.image_dir = image_dir  # 画像ファイルのディレクトリ
@@ -217,7 +235,18 @@ class VQACorpusDataset(torch.utils.data.Dataset):
         if self.answer:
             self.answer_vocab = answer_vocab
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx: int) -> Union[
+        tuple[
+            torch.Tensor,
+            list[torch.Tensor],
+            torch.Tensor,
+            torch.Tensor,
+        ],
+        tuple[
+            torch.Tensor,
+            list[torch.Tensor],
+        ],
+    ]:
         """
         対応するidxのデータ（画像，質問，回答）を取得．
 
@@ -253,7 +282,7 @@ class VQACorpusDataset(torch.utils.data.Dataset):
         return len(self.df)
 
 
-def process_answer(text):  # same as distributed process_text function
+def process_answer(text: str) -> str:  # same as distributed process_text function
     # lowercase
     text = text.lower()
 
@@ -290,7 +319,7 @@ class AnswerIndex:
     idx_to_str: Mapping[int, str]
     str_to_idx: Mapping[str, int]
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.idx_to_str)
 
 
@@ -375,13 +404,18 @@ class NoModeTypeError(RuntimeError):
 class VQAOneHotAnswerDataset(torch.utils.data.Dataset):
     def __init__(
         self,
-        df_path,
-        image_dir,
-        len_sentence,
-        vocab,
-        transform=None,
-        answer=True,
-        onehot_type=None,
+        df_path: str,
+        image_dir: str,
+        len_sentence: int,
+        vocab: CustomVocab,
+        transform: Optional[torch.transforms.Compose] = None,
+        answer: bool = True,
+        onehot_type: Optional[
+            Literal[
+                "global_mode",
+                "most_confident_mode",
+            ]
+        ] = None,
     ):
         self.transform = transform  # 画像の前処理
         self.image_dir = image_dir  # 画像ファイルのディレクトリ
@@ -406,7 +440,18 @@ class VQAOneHotAnswerDataset(torch.utils.data.Dataset):
             self.answer_tensors: Mapping[str, torch.Tensor] = {k: answer_indices_to_tensor(v, len(self.aidx)) for k, v in self.answer_modes.items()}
             self.answers = get_answers(df_path, self.aidx)
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx: int) -> Union[
+        tuple[
+            torch.Tensor,
+            torch.Tensor,
+            torch.Tensor,
+            torch.Tensor,
+        ],
+        tuple[
+            torch.Tensor,
+            torch.Tensor,
+        ],
+    ]:
         """
         対応するidxのデータ（画像，質問，回答）を取得．
 
@@ -435,5 +480,5 @@ class VQAOneHotAnswerDataset(torch.utils.data.Dataset):
         else:
             return image, self.questions[idx]
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.questions)

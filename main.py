@@ -27,7 +27,7 @@ from src import (
 )
 
 
-def get_all_sentences():
+def get_all_sentences() -> list[str]:
     res = []
     for p in ["./data/train.json", "./data/valid.json"]:
         df = pd.read_json(p)
@@ -36,7 +36,7 @@ def get_all_sentences():
     return res
 
 
-def get_answers():
+def get_answers() -> list[str]:
     res = []
     df = pd.read_csv("./data/class_mapping.csv")
     res.extend(list(df["answer"]))
@@ -71,7 +71,7 @@ class VQAEmbeddingModel(nn.Module):
             nn.Softmax(dim=1),
         )
 
-    def forward(self, image, question):
+    def forward(self, image: torch.Tensor, question: torch.Tensor):
         # image: (*, C, H, W)
         # question: (*, L)  L: length of a sentence
         # -> (*, n_answer)
