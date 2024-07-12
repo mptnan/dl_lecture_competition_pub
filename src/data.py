@@ -381,7 +381,7 @@ class VQAOneHotAnswerDataset(torch.utils.data.Dataset):
         vocab,
         transform=None,
         answer=True,
-        mode_type=None,
+        onehot_type=None,
     ):
         self.transform = transform  # 画像の前処理
         self.image_dir = image_dir  # 画像ファイルのディレクトリ
@@ -396,9 +396,9 @@ class VQAOneHotAnswerDataset(torch.utils.data.Dataset):
         self.answer = answer
         if self.answer:
             self.aidx = all_answers_list(df_path)
-            if mode_type == "global_mode":
+            if onehot_type == "global_mode":
                 self.answer_modes = global_mode_indices(df_path, self.aidx)
-            elif mode_type == "most_confident_mode":
+            elif onehot_type == "most_confident_mode":
                 self.answer_modes = most_confident_mode_indices(df_path, self.aidx)
             else:
                 raise NoModeTypeError
