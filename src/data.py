@@ -431,7 +431,7 @@ class VQAOneHotAnswerDataset(torch.utils.data.Dataset):
         image = self.transform(image)
 
         if self.answer:
-            return image, self.questions[idx], self.answer_tensors[idx], self.answers[idx]
+            return image, self.questions[idx], self.answer_tensors[idx], torch.tensor(self.answers[idx])
         else:
             return image, self.questions[idx]
 

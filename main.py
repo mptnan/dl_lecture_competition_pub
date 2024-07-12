@@ -204,8 +204,6 @@ def train_onehot_answer(
             timer.push(tag="step")
 
         total_loss += loss.item()
-        print("pred: ", pred.shape)
-        print("answers: ", len(answers), len(answers[0]))
 
         total_acc += VQA_criterion(pred.argmax(1), answers)  # VQA accuracy
         if timer is not None:

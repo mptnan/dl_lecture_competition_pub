@@ -18,6 +18,8 @@ def VQA_criterion(batch_pred: torch.Tensor, batch_answers: torch.Tensor):
     total_acc = 0.0
 
     for pred, answers in zip(batch_pred, batch_answers):
+        print("pred: ", pred.shape)
+        print("answers: ", answers.shape)
         acc = 0.0
         for i in range(len(answers)):
             num_match = 0
