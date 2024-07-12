@@ -115,3 +115,29 @@ def ResNet18():
 
 def ResNet50():
     return ResNet(BottleneckBlock, [3, 4, 6, 3])
+
+
+# the distributed one
+class VQASampleModel(nn.Module):
+    def __init__(self, vocab_size: int, n_answer: int):
+        super().__init__()
+        self.resnet = ResNet18()  #
+        self.text_encoder = nn.Sequential(
+            nn.Linear(vocab_size, 512),  # (*, vocab_size) -> (*, 512)
+        )
+
+        self.fc = nn.Sequential(
+            nn.Linear(1024, 512),
+            nn.ReLU(inplace=True),
+            nn.Linear(512, n_answer),
+        )
+
+    def forward(self, image, question):
+        # image: (*, C, H, W)
+        image_feature = self.resnet(image)  # 画像の特徴量
+        question_feature = self.text_encoder(question)  # テキストの特徴量
+
+        x = torch.cat([image_feature, question_feature], dim=1)
+        x = self.fc(x)
+
+        return x

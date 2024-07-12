@@ -8,4 +8,11 @@ from .data import (
     process_text,
 )
 from .models import ResNet18, ResNet50
-from .utils import device_info, get_yes_no, prepare_logger, set_seed
+from .utils import (
+    Timer,
+    VQA_criterion,
+    device_info,
+    get_yes_no,
+    prepare_logger,
+    set_seed,
+)

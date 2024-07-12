@@ -1,7 +1,6 @@
 import shutil
 import time
 from pathlib import Path
-from typing import Mapping
 
 import hydra
 import numpy as np
@@ -16,6 +15,8 @@ from tqdm import tqdm
 from src import (
     CustomVocab,
     ResNet18,
+    Timer,
+    VQA_criterion,
     VQACorpusDataset,
     VQAOneHotAnswerDataset,
     device_info,
@@ -45,51 +46,6 @@ def get_answers():
             for each_answer in dd:
                 res.append(each_answer["answer"])
     return list(res)
-
-
-# 2. 評価指標の実装
-# 簡単にするならBCEを利用する
-def VQA_criterion(batch_pred: torch.Tensor, batch_answers: torch.Tensor):
-    total_acc = 0.0
-
-    for pred, answers in zip(batch_pred, batch_answers):
-        acc = 0.0
-        for i in range(len(answers)):
-            num_match = 0
-            for j in range(len(answers)):
-                if i == j:
-                    continue
-                if pred == answers[j]:
-                    num_match += 1
-            acc += min(num_match / 3, 1)
-        total_acc += acc / 10
-
-    return total_acc / len(batch_pred)
-
-
-class VQAModel(nn.Module):
-    def __init__(self, vocab_size: int, n_answer: int):
-        super().__init__()
-        self.resnet = ResNet18()  #
-        self.text_encoder = nn.Sequential(
-            nn.Linear(vocab_size, 512),  # (*, vocab_size) -> (*, 512)
-        )
-
-        self.fc = nn.Sequential(
-            nn.Linear(1024, 512),
-            nn.ReLU(inplace=True),
-            nn.Linear(512, n_answer),
-        )
-
-    def forward(self, image, question):
-        # image: (*, C, H, W)
-        image_feature = self.resnet(image)  # 画像の特徴量
-        question_feature = self.text_encoder(question)  # テキストの特徴量
-
-        x = torch.cat([image_feature, question_feature], dim=1)
-        x = self.fc(x)
-
-        return x
 
 
 class VQAEmbeddingModel(nn.Module):
@@ -290,48 +246,11 @@ def eval(
     return total_loss / len(dataloader), total_acc / len(dataloader), simple_acc / len(dataloader), time.time() - start
 
 
-class Timer:
-    def __init__(self):
-        self._last_time = time.perf_counter()
-        self._laps = []
-        self._tag_laps = {}
-
-    def push(self, tag: str = ""):
-        t = time.perf_counter()
-        lap = t - self._last_time
-        self._last_time = t
-        self._laps.append(lap)
-        if tag not in self._tag_laps.keys():
-            self._tag_laps[tag] = []
-        self._tag_laps[tag].append(lap)
-
-    def last_lap(self) -> float:
-        if len(self._laps) == 0:
-            return 0.0
-        return self._laps[-1]
-
-    def last_lap_tag(self, tag: str):
-        if tag not in self._tag_laps.keys() or len(self._tag_laps[tag]) == 0:
-            return 0.0
-        return self._tag_laps[tag][-1]
-
-    def average_lap(self) -> float:
-        if len(self._laps) == 0:
-            return 0.0
-        return sum(self._laps) / len(self._laps)
-
-    def average_lap_tag(self, tag: str):
-        if tag not in self._tag_laps.keys() or len(self._tag_laps[tag]) == 0:
-            return 0.0
-        return sum(self._tag_laps[tag]) / len(self._tag_laps[tag])
-
-
 class DeviceNotAvailable(RuntimeError):
     pass
 
 
-@hydra.main(version_base=None, config_path="configs", config_name="config")
-def main(cfg: DictConfig):
+def preprocess(cfg: DictConfig):
     logger = prepare_logger()
     logger.info("[configuration]\n" + OmegaConf.to_yaml(cfg))
 
@@ -369,6 +288,38 @@ def main(cfg: DictConfig):
         device = xm.xla_device()
 
     set_seed(seed)
+
+    return (
+        logger,
+        seed,
+        num_epoch,
+        lr,
+        num_workers,
+        device,
+        env_name,
+        ask_save_model,
+        default_save_model,
+        hydra_output_dir,
+        runtime_output_dir,
+    )
+
+
+@hydra.main(version_base=None, config_path="configs", config_name="config")
+def main_legacy(cfg: DictConfig):
+
+    (
+        logger,
+        seed,
+        num_epoch,
+        lr,
+        num_workers,
+        device,
+        env_name,
+        ask_save_model,
+        default_save_model,
+        hydra_output_dir,
+        runtime_output_dir,
+    ) = preprocess(cfg)
 
     epoch_timer = Timer()
     train_timer = Timer()
@@ -521,43 +472,19 @@ def main(cfg: DictConfig):
 
 @hydra.main(version_base=None, config_path="configs", config_name="config")
 def main_onehot_answer(cfg: DictConfig):
-    logger = prepare_logger()
-    logger.info("[configuration]\n" + OmegaConf.to_yaml(cfg))
-
-    # redefine all cfg variables
-    seed = cfg.env.seed
-    num_epoch = cfg.env.num_epoch
-    lr = cfg.env.lr
-    num_workers = cfg.env.num_workers
-    device = cfg.env.device
-    env_name = cfg.env.env_name
-    ask_save_model = cfg.env.ask_save_model
-    default_save_model = cfg.env.default_save_model
-
-    # deviceの設定
-    logger.info(f"{str(device)} is used for device")
-
-    hydra_output_dir = Path(hydra.core.hydra_config.HydraConfig.get().runtime.output_dir)
-    logger.info(f"output into {hydra_output_dir}")
-    runtime_output_dir = Path(cfg.env.runtime_output_dir)
-    runtime_output_dir.mkdir(parents=True, exist_ok=True)
-    logger.info(f"runtime output into {runtime_output_dir}")
-
-    devices = device_info()
-    logger.info("[devices]\n" + devices["info"])
-    if device == "xla" and not devices["tpu"]["available"]:
-        raise DeviceNotAvailable("tpu(xla) is not available")
-    elif device == "cuda" and not devices["cuda"]["available"]:
-        raise DeviceNotAvailable("gpu(cuda) is not available")
-    elif device not in ["cpu", "cuda", "xla"]:
-        raise DeviceNotAvailable(f"{device} is not available")
-
-    if device == "xla":
-        import torch_xla.core.xla_model as xm
-
-        device = xm.xla_device()
-
-    set_seed(seed)
+    (
+        logger,
+        seed,
+        num_epoch,
+        lr,
+        num_workers,
+        device,
+        env_name,
+        ask_save_model,
+        default_save_model,
+        hydra_output_dir,
+        runtime_output_dir,
+    ) = preprocess(cfg)
 
     epoch_timer = Timer()
     train_timer = Timer()
