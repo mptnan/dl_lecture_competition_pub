@@ -304,7 +304,7 @@ def all_answers_list(train_json_path: str) -> AnswerIndex:
             res.append(process_answer(ans["answer"]))
 
     idx_to_str: list[str] = list(set(res))  # unique
-    str_to_idx: Mapping[str, int] = {v: i for i, v in idx_to_str.enumerate()}
+    str_to_idx: Mapping[str, int] = {v: i for i, v in enumerate(idx_to_str)}
     return AnswerIndex(
         idx_to_str=idx_to_str,
         str_to_idx=str_to_idx,
