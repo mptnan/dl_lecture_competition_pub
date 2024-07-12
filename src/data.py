@@ -389,7 +389,7 @@ class VQAOneHotAnswerDataset(torch.utils.data.Dataset):
             self.json = json.load(f)  # 画像ファイルのパス，question, answerを持つDataFrame
 
         self.questions = {}  # (n_questions, len_sentence)
-        for k, question in self.json["question"]:
+        for k, question in self.json["question"].items():
             words = vocab.to_tensor(question, len_sentence)  # (len_sentence,)
             self.questions[k] = words
 
@@ -403,7 +403,7 @@ class VQAOneHotAnswerDataset(torch.utils.data.Dataset):
             else:
                 raise NoModeTypeError
 
-            self.answer_tensors: Mapping[str, torch.Tensor] = {k: answer_indices_to_tensor(v, len(self.aidx)) for k, v in self.answer_modes}
+            self.answer_tensors: Mapping[str, torch.Tensor] = {k: answer_indices_to_tensor(v, len(self.aidx)) for k, v in self.answer_modes.items()}
             self.answers = get_answers(df_path, self.aidx)
 
     def __getitem__(self, idx):
