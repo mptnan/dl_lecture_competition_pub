@@ -11,6 +11,7 @@ import pandas as pd
 import torch
 from PIL import Image
 from torchtext.vocab import Vocab, vocab
+from torchvision import transforms
 
 
 def process_text(text: str) -> str:
@@ -108,7 +109,7 @@ class VQADataset(torch.utils.data.Dataset):
         self,
         df_path: str,
         image_dir: str,
-        transform: Optional[torch.transforms.Compose] = None,
+        transform: Optional[transforms.Compose] = None,
         answer: bool = True,
     ):
         self.transform = transform  # 画像の前処理
@@ -218,7 +219,7 @@ class VQACorpusDataset(torch.utils.data.Dataset):
         image_dir: str,
         len_sentence: int,
         vocab: CustomVocab,
-        transform: Optional[torch.transforms.Compose] = None,
+        transform: Optional[transforms.Compose] = None,
         answer: bool = True,
         answer_vocab: Optional[CustomVocab] = None,
     ):
@@ -408,7 +409,7 @@ class VQAOneHotAnswerDataset(torch.utils.data.Dataset):
         image_dir: str,
         len_sentence: int,
         vocab: CustomVocab,
-        transform: Optional[torch.transforms.Compose] = None,
+        transform: Optional[transforms.Compose] = None,
         answer: bool = True,
         onehot_type: Optional[
             Literal[
