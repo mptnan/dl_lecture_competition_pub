@@ -317,7 +317,7 @@ def global_mode_indices(train_json_path: str, aidx: AnswerIndex) -> Mapping[str,
         data = json.load(f)
     answers = data["answers"]
     res: Mapping[str, list[int]] = {}
-    for k, ans_l in answers:
+    for k, ans_l in answers.items():
         tmp = [aidx.str_to_idx[process_answer(ans["answer"])] for ans in ans_l]
         res[k] = multimode(tmp)
 
@@ -338,7 +338,7 @@ def most_confident_mode_indices(train_json_path: str, aidx: AnswerIndex) -> Mapp
         data = json.load(f)
     answers = data["answers"]
     res: Mapping[str, list[int]] = {}
-    for k, ans_l in answers:
+    for k, ans_l in answers.items():
         cf = get_most_confident([ans["answer_confidence"] for ans in ans_l])
         tmp = [aidx.str_to_idx[process_answer(ans["answer"])] for ans in ans_l if ans["answer_confidence"] == cf]
         res[k] = multimode(tmp)
@@ -362,7 +362,7 @@ def get_answers(train_json_path: str, aidx: AnswerIndex):
         data = json.load(f)
     answers = data["answers"]
     res: Mapping[str, list[int]] = {}
-    for k, ans_l in answers:
+    for k, ans_l in answers.items():
         res[k] = [process_answer(ans["answer"]) for ans in ans_l]
 
     return res
