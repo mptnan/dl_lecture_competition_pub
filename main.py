@@ -668,7 +668,7 @@ def main_onehot_answer(cfg: DictConfig):
         pred = pred.argmax(1).cpu().item()
         submission.append(pred)
 
-    submission = [aidx.int_to_str[id] for id in submission]
+    submission = [aidx.idx_to_str[id] for id in submission]
     submission = np.array(submission)
     torch.save(model.state_dict(), runtime_output_dir / "model.pth")
     np.save(hydra_output_dir / "submission.npy", submission)
