@@ -1,6 +1,7 @@
 import shutil
 import time
 from pathlib import Path
+from typing import Mapping
 
 import hydra
 import numpy as np
@@ -16,6 +17,7 @@ from src import (
     CustomVocab,
     ResNet18,
     VQACorpusDataset,
+    VQAOneHotAnswerDataset,
     device_info,
     get_yes_no,
     prepare_logger,
@@ -187,6 +189,69 @@ def train(
             timer.push()
 
     return total_loss / len(dataloader), total_acc / len(dataloader), simple_acc / len(dataloader), time.time() - start
+
+
+def train_onehot_answer(
+    model,
+    dataloader,
+    optimizer,
+    criterion,
+    device,
+    timer=None,
+):
+    model.train()
+
+    total_loss = 0
+    total_acc = 0
+    simple_acc = 0
+
+    start = time.time()
+    if timer is not None:
+        timer.push()
+    for (
+        image,
+        question,
+        answer_tensor,
+        answers,
+    ) in tqdm(
+        dataloader,
+        total=len(dataloader),
+        leave=False,
+    ):
+        if timer is not None:
+            timer.push(tag="load_data")
+
+        image, question, answer_tensor = (
+            image.to(device),
+            question.to(device),
+            answer_tensor.to(device),
+        )
+        if timer is not None:
+            timer.push(tag="to_device")
+
+        pred = model(image, question)
+        if timer is not None:
+            timer.push(tag="pred")
+
+        loss = criterion(pred, answer_tensor)
+        if timer is not None:
+            timer.push(tag="calc_loss")
+
+        optimizer.zero_grad()
+        loss.backward()
+        if timer is not None:
+            timer.push(tag="backward")
+
+        optimizer.step()
+        if timer is not None:
+            timer.push(tag="step")
+
+        total_loss += loss.item()
+        total_acc += VQA_criterion(pred.argmax(1), answers)  # VQA accuracy
+        if timer is not None:
+            timer.push()
+
+    return total_loss / len(dataloader), total_acc / len(dataloader), time.time() - start
 
 
 def eval(
@@ -453,5 +518,168 @@ def main(cfg: DictConfig):
             shutil.copyfile(runtime_output_dir / "model.pth", hydra_output_dir / "model.pth")
 
 
+@hydra.main(version_base=None, config_path="configs", config_name="config")
+def main_onehot_answer(cfg: DictConfig):
+    logger = prepare_logger()
+    logger.info("[configuration]\n" + OmegaConf.to_yaml(cfg))
+
+    # redefine all cfg variables
+    seed = cfg.env.seed
+    num_epoch = cfg.env.num_epoch
+    lr = cfg.env.lr
+    num_workers = cfg.env.num_workers
+    device = cfg.env.device
+    env_name = cfg.env.env_name
+    ask_save_model = cfg.env.ask_save_model
+    default_save_model = cfg.env.default_save_model
+
+    # deviceの設定
+    logger.info(f"{str(device)} is used for device")
+
+    hydra_output_dir = Path(hydra.core.hydra_config.HydraConfig.get().runtime.output_dir)
+    logger.info(f"output into {hydra_output_dir}")
+    runtime_output_dir = Path(cfg.env.runtime_output_dir)
+    runtime_output_dir.mkdir(parents=True, exist_ok=True)
+    logger.info(f"runtime output into {runtime_output_dir}")
+
+    devices = device_info()
+    logger.info("[devices]\n" + devices["info"])
+    if device == "xla" and not devices["tpu"]["available"]:
+        raise DeviceNotAvailable("tpu(xla) is not available")
+    elif device == "cuda" and not devices["cuda"]["available"]:
+        raise DeviceNotAvailable("gpu(cuda) is not available")
+    elif device not in ["cpu", "cuda", "xla"]:
+        raise DeviceNotAvailable(f"{device} is not available")
+
+    if device == "xla":
+        import torch_xla.core.xla_model as xm
+
+        device = xm.xla_device()
+
+    set_seed(seed)
+
+    epoch_timer = Timer()
+    train_timer = Timer()
+
+    # dataloader / model
+    transform = transforms.Compose(
+        [
+            transforms.Resize((224, 224)),
+            transforms.ToTensor(),
+        ]
+    )
+
+    # make vocab
+    all_sentences = get_all_sentences()
+    vocab = CustomVocab(text_processor=process_text, tokenizer=get_tokenizer("basic_english"))
+    for s in all_sentences:
+        vocab.add_sentence(s)
+    vocab.set_vocab(min_freq=25)
+
+    trainval_dataset = VQAOneHotAnswerDataset(
+        df_path="./data/train.json",
+        image_dir="./data/train",
+        len_sentence=256,
+        vocab=vocab,
+        transform=transform,
+        answer=True,
+        mode_type="global_mode",
+    )
+
+    test_dataset = VQACorpusDataset(
+        df_path="./data/valid.json",
+        image_dir="./data/valid",
+        len_sentence=256,
+        vocab=vocab,
+        transform=transform,
+        answer=False,
+    )
+
+    train_loader = torch.utils.data.DataLoader(
+        trainval_dataset,
+        batch_size=128,
+        shuffle=True,
+        num_workers=num_workers,
+    )
+
+    test_loader = torch.utils.data.DataLoader(
+        test_dataset,
+        batch_size=1,
+        shuffle=False,
+        num_workers=num_workers,
+    )
+    aidx = trainval_dataset.aidx
+    model = VQAEmbeddingModel(
+        vocab_size=len(vocab),
+        embedding_dim=512,
+        n_answer=len(aidx),
+    ).to(device)
+
+    # optimizer / criterion
+    criterion = nn.CrossEntropyLoss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=1e-5)
+
+    epoch_timer.push()
+    logger.info(f"preparation took {epoch_timer.last_lap()/60:.2f} minutes")
+
+    # train model
+    # 10 mins of TPU / epoch
+    for epoch in range(num_epoch):
+        train_loss, train_acc, train_time = train(
+            model,
+            train_loader,
+            optimizer,
+            criterion,
+            device,
+            timer=None,
+        )
+        _msg = "\n".join(
+            [
+                f"epoch【{epoch + 1}/{num_epoch}】",
+                f"train time: {train_time:.2f} [s]",
+                f"train loss: {train_loss:.4f}",
+                f"train acc: {train_acc:.4f}",
+            ]
+        )
+        logger.info(_msg)
+        epoch_timer.push()
+        logger.info(f"epoch took {epoch_timer.last_lap()/60:.2f} minutes")
+
+        if "load_data" in train_timer._tag_laps.keys():
+            _msg = "\n".join(
+                [
+                    "[train_timer] average secs",
+                    f"load_data: {train_timer.average_lap_tag('load_data'):.2e}",
+                    f"to_device took {train_timer.average_lap_tag('to_device'):.2e} secs average",
+                    f"pred took {train_timer.average_lap_tag('pred'):.2e} secs average",
+                    f"calc_loss took {train_timer.average_lap_tag('calc_loss'):.2e} secs average",
+                    f"backward took {train_timer.average_lap_tag('backward'):.2e} secs average",
+                    f"step took {train_timer.average_lap_tag('step'):.2e} secs average",
+                ]
+            )
+            logger.info(_msg)
+
+    # 提出用ファイルの作成
+    model.eval()
+    submission = []
+    for image, question in test_loader:
+        image, question = image.to(device), question.to(device)
+        pred = model(image, question)
+        pred = pred.argmax(1).cpu().item()
+        submission.append(pred)
+
+    submission = [aidx.int_to_str[id] for id in submission]
+    submission = np.array(submission)
+    torch.save(model.state_dict(), runtime_output_dir / "model.pth")
+    np.save(hydra_output_dir / "submission.npy", submission)
+
+    if runtime_output_dir.resolve() != hydra_output_dir.resolve():
+        if ask_save_model:
+            if get_yes_no("Do you save the trained model?"):
+                shutil.copyfile(runtime_output_dir / "model.pth", hydra_output_dir / "model.pth")
+        elif default_save_model:
+            shutil.copyfile(runtime_output_dir / "model.pth", hydra_output_dir / "model.pth")
+
+
 if __name__ == "__main__":
-    main()
+    main_onehot_answer()

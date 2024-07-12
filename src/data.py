@@ -1,6 +1,9 @@
+import json
 import re
 from collections import Counter
-from statistics import mode
+from dataclasses import dataclass
+from statistics import mode, multimode
+from typing import Mapping
 
 import numpy as np
 import pandas as pd
@@ -248,3 +251,189 @@ class VQACorpusDataset(torch.utils.data.Dataset):
 
     def __len__(self):
         return len(self.df)
+
+
+def process_answer(text):  # same as distributed process_text function
+    # lowercase
+    text = text.lower()
+
+    # 数詞を数字に変換
+    num_word_to_digit = {"zero": "0", "one": "1", "two": "2", "three": "3", "four": "4", "five": "5", "six": "6", "seven": "7", "eight": "8", "nine": "9", "ten": "10"}
+    for word, digit in num_word_to_digit.items():
+        text = text.replace(word, digit)
+
+    # 小数点のピリオドを削除
+    text = re.sub(r"(?<!\d)\.(?!\d)", "", text)
+
+    # 冠詞の削除
+    text = re.sub(r"\b(a|an|the)\b", "", text)
+
+    # 短縮形のカンマの追加
+    contractions = {"dont": "don't", "isnt": "isn't", "arent": "aren't", "wont": "won't", "cant": "can't", "wouldnt": "wouldn't", "couldnt": "couldn't"}
+    for contraction, correct in contractions.items():
+        text = text.replace(contraction, correct)
+
+    # 句読点をスペースに変換
+    text = re.sub(r"[^\w\s':]", " ", text)
+
+    # 句読点をスペースに変換
+    text = re.sub(r"\s+,", ",", text)
+
+    # 連続するスペースを1つに変換
+    text = re.sub(r"\s+", " ", text).strip()
+
+    return text
+
+
+@dataclass
+class AnswerIndex:
+    idx_to_str: Mapping[int, str]
+    str_to_idx: Mapping[str, int]
+
+    def __len__(self):
+        return len(self.idx_to_str)
+
+
+def all_answers_list(train_json_path: str) -> AnswerIndex:
+    with open(train_json_path) as f:
+        data = json.load(f)
+    answers = data["answers"]
+    res = []
+    for ans_l in answers.values():
+        for ans in ans_l:
+            res.append(process_answer(ans["answer"]))
+
+    idx_to_str: list[str] = list(set(res))  # unique
+    str_to_idx: Mapping[str, int] = {v: i for i, v in idx_to_str.enumerate()}
+    return AnswerIndex(
+        idx_to_str=idx_to_str,
+        str_to_idx=str_to_idx,
+    )
+
+
+def global_mode_indices(train_json_path: str, aidx: AnswerIndex) -> Mapping[str, list[int]]:
+    # 10個の回答のうちの最頻値
+    with open(train_json_path) as f:
+        data = json.load(f)
+    answers = data["answers"]
+    res: Mapping[str, list[int]] = {}
+    for k, ans_l in answers:
+        tmp = [aidx.str_to_idx[process_answer(ans["answer"])] for ans in ans_l]
+        res[k] = multimode(tmp)
+
+    return res
+
+
+def get_most_confident(confidences: list[str]) -> str:
+    if "yes" in confidences:
+        return "yes"
+    elif "maybe" in confidences:
+        return "maybe"
+    return "no"
+
+
+def most_confident_mode_indices(train_json_path: str, aidx: AnswerIndex) -> Mapping[str, list[int]]:
+    # 10個の回答のうち最も信頼性の高い回答のうちの最頻値
+    with open(train_json_path) as f:
+        data = json.load(f)
+    answers = data["answers"]
+    res: Mapping[str, list[int]] = {}
+    for k, ans_l in answers:
+        cf = get_most_confident([ans["answer_confidence"] for ans in ans_l])
+        tmp = [aidx.str_to_idx[process_answer(ans["answer"])] for ans in ans_l if ans["answer_confidence"] == cf]
+        res[k] = multimode(tmp)
+
+    return res
+
+
+def answer_indices_to_tensor(ints: list[int], max_size: int) -> torch.Tensor:
+    """
+    [0, 2, 3] -> [0.333, 0, 0.333, 0.333, ...]
+    """
+    res = torch.zeros(max_size)
+    for i in ints:
+        res[i] += 1 / len(ints)
+
+    return res / torch.sum(res)
+
+
+def get_answers(train_json_path: str, aidx: AnswerIndex):
+    with open(train_json_path) as f:
+        data = json.load(f)
+    answers = data["answers"]
+    res: Mapping[str, list[int]] = {}
+    for k, ans_l in answers:
+        res[k] = [process_answer(ans["answer"]) for ans in ans_l]
+
+    return res
+
+
+class NoModeTypeError(RuntimeError):
+    pass
+
+
+class VQAOneHotAnswerDataset(torch.utils.data.Dataset):
+    def __init__(
+        self,
+        df_path,
+        image_dir,
+        len_sentence,
+        vocab,
+        transform=None,
+        answer=True,
+        mode_type=None,
+    ):
+        self.transform = transform  # 画像の前処理
+        self.image_dir = image_dir  # 画像ファイルのディレクトリ
+        with open(df_path) as f:
+            self.json = json.load(f)  # 画像ファイルのパス，question, answerを持つDataFrame
+
+        self.questions = {}  # (n_questions, len_sentence)
+        for k, question in self.json["question"]:
+            words = vocab.to_tensor(question, len_sentence)  # (len_sentence,)
+            self.questions[k] = words
+
+        self.answer = answer
+        if self.answer:
+            self.aidx = all_answers_list(df_path)
+            if mode_type == "global_mode":
+                self.answer_modes = global_mode_indices(df_path, self.aidx)
+            elif mode_type == "most_confident_mode":
+                self.answer_modes = most_confident_mode_indices(df_path, self.aidx)
+            else:
+                raise NoModeTypeError
+
+            self.answer_tensors: Mapping[str, torch.Tensor] = {k: answer_indices_to_tensor(v, len(self.aidx)) for k, v in self.answer_modes}
+            self.answers = get_answers(df_path, self.aidx)
+
+    def __getitem__(self, idx):
+        """
+        対応するidxのデータ（画像，質問，回答）を取得．
+
+        Parameters
+        ----------
+        idx : int
+            取得するデータのインデックス
+
+        Returns
+        -------
+        image : torch.Tensor  (C, H, W)
+            画像データ
+        question : torch.Tensor  (vocab_size, n_words_in_sentence)
+            質問文をone-hot表現に変換したもの
+        answers : torch.Tensor  (n_answer)
+            10人の回答者の回答のid
+        mode_answer_idx : torch.Tensor  (1)
+            10人の回答者の回答の中で最頻値の回答のid
+        """
+        idx = str(idx)
+        image = Image.open(f"{self.image_dir}/{self.json['image'][idx]}")
+        image = self.transform(image)
+
+        if self.answer:
+            return image, self.questions[idx], self.answer_tensors[idx], self.answers[idx]
+        else:
+            return image, self.questions[idx]
+
+    def __len__(self):
+        return len(self.questions)
