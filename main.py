@@ -112,6 +112,7 @@ class VQAEmbeddingModel(nn.Module):
             nn.Linear(1024, 512),
             nn.ReLU(inplace=True),
             nn.Linear(512, n_answer),
+            nn.Softmax(dim=1),
         )
 
     def forward(self, image, question):
