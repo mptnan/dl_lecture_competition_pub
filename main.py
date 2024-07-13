@@ -127,7 +127,7 @@ class VQABertEmbeddingModel(nn.Module):
 
         with torch.no_grad():
             outputs = self.bert_model(**question_input)
-            print("outputs: ", outputs.shape)
+            print("outputs: ", outputs.last_hidden_state.shape)
             raise KeyboardInterrupt
 
         question_feature = outputs[0]
