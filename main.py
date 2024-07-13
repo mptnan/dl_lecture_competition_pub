@@ -512,7 +512,7 @@ def main_onehot_answer(cfg: DictConfig):
         vocab=vocab,
         transform=transform,
         answer=True,
-        onehot_type="global_mode",
+        onehot_type="most_confident_mode",
     )
 
     test_dataset = VQACorpusDataset(
