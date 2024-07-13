@@ -1,6 +1,7 @@
 import shutil
 import time
 from pathlib import Path
+from typing import Literal
 
 import hydra
 import numpy as np
@@ -15,6 +16,7 @@ from tqdm import tqdm
 from src import (
     CustomVocab,
     ResNet18,
+    ResNet50,
     Timer,
     VQA_criterion,
     VQACorpusDataset,
@@ -48,17 +50,28 @@ def get_answers() -> list[str]:
     return list(res)
 
 
+class InvalidResnetType(RuntimeError):
+    pass
+
+
 class VQAEmbeddingModel(nn.Module):
     def __init__(
         self,
         vocab_size: int,
         embedding_dim: int,
+        resnet_type: Literal[18, 50],
         lstm_hidden_dim: int,
         lstm_bidirectional: bool,
         n_answer: int,
     ):
         super().__init__()
-        self.resnet = ResNet18()
+        if resnet_type == 18:
+            self.resnet = ResNet18()
+        elif resnet_type == 50:
+            self.resnet = ResNet50()
+        else:
+            raise InvalidResnetType
+
         self.embed = nn.Embedding(
             num_embeddings=vocab_size,
             embedding_dim=embedding_dim,
@@ -407,6 +420,7 @@ def main_legacy(cfg: DictConfig):
 
     model = VQAEmbeddingModel(
         vocab_size=len(vocab),
+        resnet_type=18,
         embedding_dim=512,
         n_answer=len(answer_vocab),
         lstm_bidirectional=False,
@@ -549,6 +563,7 @@ def main_onehot_answer(cfg: DictConfig):
     aidx = trainval_dataset.aidx
     model = VQAEmbeddingModel(
         vocab_size=len(vocab),
+        resnet_type=50,
         embedding_dim=512,
         n_answer=len(aidx),
         lstm_bidirectional=True,
