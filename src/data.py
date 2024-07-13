@@ -341,15 +341,26 @@ def all_answers_list(train_json_path: str) -> AnswerIndex:
     )
 
 
-def global_mode_indices(train_json_path: str, aidx: AnswerIndex) -> Mapping[str, list[int]]:
+def answer_indices_to_tensor(ints: list[int], max_size: int) -> torch.Tensor:
+    """
+    [0, 2, 3] -> [0.333, 0, 0.333, 0.333, ...]
+    """
+    res = torch.zeros(max_size)
+    for i in ints:
+        res[i] += 1 / len(ints)
+
+    return res / torch.sum(res)
+
+
+def global_mode_tensors(train_json_path: str, aidx: AnswerIndex) -> Mapping[str, torch.Tensor]:
     # 10個の回答のうちの最頻値
     with open(train_json_path) as f:
         data = json.load(f)
     answers = data["answers"]
-    res: Mapping[str, list[int]] = {}
+    res = {}
     for k, ans_l in answers.items():
         tmp = [aidx.str_to_idx[process_answer(ans["answer"])] for ans in ans_l]
-        res[k] = multimode(tmp)
+        res[k] = answer_indices_to_tensor(multimode(tmp), len(aidx))
 
     return res
 
@@ -362,29 +373,53 @@ def get_most_confident(confidences: list[str]) -> str:
     return "no"
 
 
-def most_confident_mode_indices(train_json_path: str, aidx: AnswerIndex) -> Mapping[str, list[int]]:
+def most_confident_mode_tensors(train_json_path: str, aidx: AnswerIndex) -> Mapping[str, torch.Tensor]:
     # 10個の回答のうち最も信頼性の高い回答のうちの最頻値
     with open(train_json_path) as f:
         data = json.load(f)
     answers = data["answers"]
-    res: Mapping[str, list[int]] = {}
+    res = {}
     for k, ans_l in answers.items():
         cf = get_most_confident([ans["answer_confidence"] for ans in ans_l])
         tmp = [aidx.str_to_idx[process_answer(ans["answer"])] for ans in ans_l if ans["answer_confidence"] == cf]
-        res[k] = multimode(tmp)
+        res[k] = answer_indices_to_tensor(multimode(tmp), len(aidx))
 
     return res
 
 
-def answer_indices_to_tensor(ints: list[int], max_size: int) -> torch.Tensor:
-    """
-    [0, 2, 3] -> [0.333, 0, 0.333, 0.333, ...]
-    """
-    res = torch.zeros(max_size)
-    for i in ints:
-        res[i] += 1 / len(ints)
+def one_hot_vector_tensor(idx: int, max_size: int) -> torch.Tensor:
+    t = torch.zeros(max_size)
+    t[idx] = 1
+    return t
 
-    return res / torch.sum(res)
+
+def confidence_weighted_average_tensors(
+    train_json_path: str,
+    aidx: AnswerIndex,
+    confidence_weight: Mapping[str, float] = {"yes": 1},
+) -> Mapping[str, torch.Tensor]:
+    # 10個の回答のうち最も信頼性の高い回答のうちの最頻値
+    with open(train_json_path) as f:
+        data = json.load(f)
+    answers = data["answers"]
+    weights = {}
+    res = {}
+    for k, ans_l in answers.items():
+        for ans in ans_l:
+            conf = ans["answer_confidence"]
+            word = ans["answer"]
+            if conf in confidence_weight.keys():
+                ans_idx = process_answer(word)
+                if ans_idx not in weights.keys():
+                    weights[ans_idx] = 0
+                weights[ans_idx] += confidence_weight[conf]
+        res_t = torch.zeros(len(aidx))
+        for wk, wv in weights.items():
+            res_t += wv * one_hot_vector_tensor(wk, len(aidx))
+
+        res[k] = res_t / torch.sum(res_t)
+
+    return res
 
 
 def get_answers(train_json_path: str, aidx: AnswerIndex):
@@ -415,8 +450,10 @@ class VQAOneHotAnswerDataset(torch.utils.data.Dataset):
             Literal[
                 "global_mode",
                 "most_confident_mode",
+                "confidence_weighted_average",
             ]
         ] = None,
+        confidence_weight: Optional[Mapping[str, float]] = None,
     ):
         self.transform = transform  # 画像の前処理
         self.image_dir = image_dir  # 画像ファイルのディレクトリ
@@ -432,13 +469,18 @@ class VQAOneHotAnswerDataset(torch.utils.data.Dataset):
         if self.answer:
             self.aidx = all_answers_list(df_path)
             if onehot_type == "global_mode":
-                self.answer_modes = global_mode_indices(df_path, self.aidx)
+                self.answer_tensors = global_mode_tensors(df_path, self.aidx)
             elif onehot_type == "most_confident_mode":
-                self.answer_modes = most_confident_mode_indices(df_path, self.aidx)
+                self.answer_tensors = most_confident_mode_tensors(df_path, self.aidx)
+            elif onehot_type == "confidence_weighted_average":
+                self.answer_tensors = confidence_weighted_average_tensors(
+                    df_path,
+                    self.aidx,
+                    confidence_weight=confidence_weight,
+                )
             else:
                 raise NoModeTypeError
 
-            self.answer_tensors: Mapping[str, torch.Tensor] = {k: answer_indices_to_tensor(v, len(self.aidx)) for k, v in self.answer_modes.items()}
             self.answers = get_answers(df_path, self.aidx)
 
     def __getitem__(self, idx: int) -> Union[
