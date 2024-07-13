@@ -110,7 +110,7 @@ class VQABertEmbeddingModel(nn.Module):
         # -> (*, n_answer)
         image_feature = self.resnet(image)  # (*, C, H, W)->(*, 512)
 
-        question = self.bert_tokenizer.encode(
+        question_input = self.bert_tokenizer.encode_plus(
             question,
             add_special_tokens=True,
             truncation=True,
@@ -118,7 +118,7 @@ class VQABertEmbeddingModel(nn.Module):
             return_tensors="pt",
         )  # (*, L)->(*, embedding_dim)
         with torch.no_grad():
-            outputs = self.bert_model(**question)
+            outputs = self.bert_model(**question_input)
             print("outputs: ", outputs.shape)
             raise KeyboardInterrupt
 
