@@ -917,4 +917,4 @@ def main_bert_question_onehot_answer(cfg: DictConfig):
 
 
 if __name__ == "__main__":
-    main_onehot_answer()
+    main_bert_question_onehot_answer()
