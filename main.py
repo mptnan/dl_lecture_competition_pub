@@ -81,6 +81,7 @@ class VQABertEmbeddingModel(nn.Module):
         embedding_dim: int,
         resnet_type: Literal[18, 50],
         n_answer: int,
+        device: str,
     ):
         super().__init__()
         if resnet_type == 18:
@@ -104,6 +105,8 @@ class VQABertEmbeddingModel(nn.Module):
             nn.Softmax(dim=1),
         )
 
+        self.device = device
+
     def forward(self, image: torch.Tensor, question: torch.Tensor):
         # image: (*, C, H, W)
         # question: (*,), type=str
@@ -117,6 +120,11 @@ class VQABertEmbeddingModel(nn.Module):
             padding=True,
             return_tensors="pt",
         )  # (*, L)->(*, embedding_dim)
+        question_input = {
+            "input_ids": question_input["input_ids"].to(self.device),
+            "attention_mask": question_input["attention_mask"].to(self.device),
+        }
+
         with torch.no_grad():
             outputs = self.bert_model(**question_input)
             print("outputs: ", outputs.shape)
