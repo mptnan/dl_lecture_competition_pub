@@ -846,8 +846,6 @@ def main_bert_question_onehot_answer(cfg: DictConfig):
         resnet_type=50,
         embedding_dim=512,
         n_answer=len(aidx),
-        lstm_bidirectional=True,
-        lstm_hidden_dim=512,
     ).to(device)
 
     # optimizer / criterion
