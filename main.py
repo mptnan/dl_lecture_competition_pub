@@ -76,6 +76,7 @@ class VQAEmbeddingModel(nn.Module):
             num_embeddings=vocab_size,
             embedding_dim=embedding_dim,
         )
+        self.lstm_bidirectional = lstm_bidirectional
         self.lstm = nn.LSTM(
             input_size=embedding_dim,
             hidden_size=lstm_hidden_dim,
@@ -98,8 +99,11 @@ class VQAEmbeddingModel(nn.Module):
         image_feature = self.resnet(image)  # (*, C, H, W)->(*, 512)
 
         question = self.embed(question)  # (*, L)->(*, embedding_dim)
-        _, (h, _) = self.lstm(question)  # (*, embedding_dim)->(*, lstm_output_hidden_dim)
-        question_feature = torch.squeeze(h, dim=0)  # (*, lstm_output_hidden_dim)
+        _, (h, _) = self.lstm(question)  # (*, embedding_dim)->(n_direction, *, lstm_hidden_dim)
+        if self.lstm_bidirectional:
+            question_feature = torch.cat([h[0], h[1]], dim=1)  # (*, lstm_output_hidden_dim)
+        else:
+            question_feature = h[0]
 
         x = torch.cat([image_feature, question_feature], dim=1)  # (*, 512 + lstm_output_hidden_dim)
         x = self.fc(x)  # (*, 512 + lstm_output_hidden_dim)->(*, n_answer)
