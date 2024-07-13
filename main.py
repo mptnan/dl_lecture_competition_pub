@@ -53,19 +53,26 @@ class VQAEmbeddingModel(nn.Module):
         self,
         vocab_size: int,
         embedding_dim: int,
+        lstm_hidden_dim: int,
+        lstm_bidirectional: bool,
         n_answer: int,
     ):
         super().__init__()
-        self.resnet = ResNet18()  #
-        self.embed = nn.Embedding(num_embeddings=vocab_size, embedding_dim=embedding_dim)
+        self.resnet = ResNet18()
+        self.embed = nn.Embedding(
+            num_embeddings=vocab_size,
+            embedding_dim=embedding_dim,
+        )
         self.lstm = nn.LSTM(
             input_size=embedding_dim,
-            hidden_size=512,
+            hidden_size=lstm_hidden_dim,
             batch_first=True,
+            bidirectional=lstm_bidirectional,
         )
+        lstm_output_hidden_dim = (2 if lstm_bidirectional else 1) * lstm_hidden_dim
 
         self.fc = nn.Sequential(
-            nn.Linear(1024, 512),
+            nn.Linear(512 + lstm_output_hidden_dim, 512),
             nn.ReLU(inplace=True),
             nn.Linear(512, n_answer),
             nn.Softmax(dim=1),
@@ -75,14 +82,14 @@ class VQAEmbeddingModel(nn.Module):
         # image: (*, C, H, W)
         # question: (*, L)  L: length of a sentence
         # -> (*, n_answer)
-        image_feature = self.resnet(image)  # 画像の特徴量
+        image_feature = self.resnet(image)  # (*, C, H, W)->(*, 512)
 
-        question = self.embed(question)
-        _, (h, _) = self.lstm(question)
-        question_feature = torch.squeeze(h, dim=0)  # (*, Hidden)
+        question = self.embed(question)  # (*, L)->(*, embedding_dim)
+        _, (h, _) = self.lstm(question)  # (*, embedding_dim)->(*, lstm_output_hidden_dim)
+        question_feature = torch.squeeze(h, dim=0)  # (*, lstm_output_hidden_dim)
 
-        x = torch.cat([image_feature, question_feature], dim=1)
-        x = self.fc(x)
+        x = torch.cat([image_feature, question_feature], dim=1)  # (*, 512 + lstm_output_hidden_dim)
+        x = self.fc(x)  # (*, 512 + lstm_output_hidden_dim)->(*, n_answer)
 
         return x
 
@@ -402,6 +409,8 @@ def main_legacy(cfg: DictConfig):
         vocab_size=len(vocab),
         embedding_dim=512,
         n_answer=len(answer_vocab),
+        lstm_bidirectional=False,
+        lstm_hidden_dim=512,
     ).to(device)
 
     # optimizer / criterion
@@ -542,6 +551,8 @@ def main_onehot_answer(cfg: DictConfig):
         vocab_size=len(vocab),
         embedding_dim=512,
         n_answer=len(aidx),
+        lstm_bidirectional=True,
+        lstm_hidden_dim=512,
     ).to(device)
 
     # optimizer / criterion
