@@ -858,7 +858,7 @@ def main_bert_question_onehot_answer(cfg: DictConfig):
     # train model
     # 10 mins of TPU / epoch
     for epoch in range(num_epoch):
-        train_loss, train_acc, train_time = train_onehot_answer(
+        train_loss, train_acc, train_time = train_bert_question_onehot_answer(
             model,
             train_loader,
             optimizer,
