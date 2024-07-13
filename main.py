@@ -129,6 +129,8 @@ class VQABertEmbeddingModel(nn.Module):
             padding=True,
             return_tensors="pt",
         )  # (*, L)->(*, embedding_dim)
+        print("input_ids: ", len(question_input["input_ids"]))
+        print("attention_mask: ", len(question_input["attention_mask"]))
         question_input = {
             "input_ids": question_input["input_ids"].to(self.device),
             "attention_mask": question_input["attention_mask"].to(self.device),
