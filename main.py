@@ -917,5 +917,4 @@ def main_bert_question_onehot_answer(cfg: DictConfig):
 
 
 if __name__ == "__main__":
-    print(get_question_max_sentence_length())
-    # main_onehot_answer()
+    main_onehot_answer()
