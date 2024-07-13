@@ -525,3 +525,90 @@ class VQAOneHotAnswerDataset(torch.utils.data.Dataset):
 
     def __len__(self) -> int:
         return len(self.questions)
+
+
+class VQAStrQuestionOneHotAnswerDataset(torch.utils.data.Dataset):
+    def __init__(
+        self,
+        df_path: str,
+        image_dir: str,
+        transform: Optional[transforms.Compose] = None,
+        answer: bool = True,
+        onehot_type: Optional[
+            Literal[
+                "global_mode",
+                "most_confident_mode",
+                "confidence_weighted_average",
+            ]
+        ] = None,
+        confidence_weight: Optional[Mapping[str, float]] = None,
+    ):
+        self.transform = transform  # 画像の前処理
+        self.image_dir = image_dir  # 画像ファイルのディレクトリ
+        with open(df_path) as f:
+            self.json = json.load(f)  # 画像ファイルのパス，question, answerを持つDataFrame
+
+        self.questions = {}  # (n_questions, len_sentence)
+        for k, question in self.json["question"].items():
+            self.questions[k] = process_text(question)
+
+        self.answer = answer
+        if self.answer:
+            self.aidx = all_answers_list(df_path)
+            if onehot_type == "global_mode":
+                self.answer_tensors = global_mode_tensors(df_path, self.aidx)
+            elif onehot_type == "most_confident_mode":
+                self.answer_tensors = most_confident_mode_tensors(df_path, self.aidx)
+            elif onehot_type == "confidence_weighted_average":
+                self.answer_tensors = confidence_weighted_average_tensors(
+                    df_path,
+                    self.aidx,
+                    confidence_weight=confidence_weight,
+                )
+            else:
+                raise NoModeTypeError
+
+            self.answers = get_answers(df_path, self.aidx)
+
+    def __getitem__(self, idx: int) -> Union[
+        tuple[
+            torch.Tensor,
+            str,
+            torch.Tensor,
+            torch.Tensor,
+        ],
+        tuple[
+            torch.Tensor,
+            str,
+        ],
+    ]:
+        """
+        対応するidxのデータ（画像，質問，回答）を取得．
+
+        Parameters
+        ----------
+        idx : int
+            取得するデータのインデックス
+
+        Returns
+        -------
+        image : torch.Tensor  (C, H, W)
+            画像データ
+        question : torch.Tensor  (vocab_size, n_words_in_sentence)
+            質問文をone-hot表現に変換したもの
+        answers : torch.Tensor  (n_answer)
+            10人の回答者の回答のid
+        mode_answer_idx : torch.Tensor  (1)
+            10人の回答者の回答の中で最頻値の回答のid
+        """
+        idx = str(idx)
+        image = Image.open(f"{self.image_dir}/{self.json['image'][idx]}")
+        image = self.transform(image)
+
+        if self.answer:
+            return image, self.questions[idx], self.answer_tensors[idx], torch.tensor(self.answers[idx])
+        else:
+            return image, self.questions[idx]
+
+    def __len__(self) -> int:
+        return len(self.questions)

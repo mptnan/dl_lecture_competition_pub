@@ -1,3 +1,4 @@
+import json
 import shutil
 import time
 from pathlib import Path
@@ -12,6 +13,7 @@ from omegaconf import DictConfig, OmegaConf
 from torchtext.data.utils import get_tokenizer
 from torchvision import transforms
 from tqdm import tqdm
+from transformers import BertModel, BertTokenizer
 
 from src import (
     CustomVocab,
@@ -27,6 +29,23 @@ from src import (
     process_text,
     set_seed,
 )
+
+
+def get_question_max_sentence_length() -> int:
+    sentences = []
+    for file in ["./data/train.json", "./data/valid.json"]:
+        with open("./data/train.json") as f:
+            data = json.load(f)
+        sentences.extend(data["question"].values())
+
+    max_len = 0
+    for s in sentences:
+        tmp_max_len = len(process_text(s).split(" "))
+        if tmp_max_len > max_len:
+            max_len = tmp_max_len
+            print(max_len, s)
+
+    return max_len  # 56
 
 
 def get_all_sentences() -> list[str]:
@@ -52,6 +71,71 @@ def get_answers() -> list[str]:
 
 class InvalidResnetType(RuntimeError):
     pass
+
+
+class VQABertEmbeddingModel(nn.Module):
+    def __init__(
+        self,
+        vocab_size: int,
+        embedding_dim: int,
+        resnet_type: Literal[18, 50],
+        lstm_hidden_dim: int,
+        lstm_bidirectional: bool,
+        n_answer: int,
+    ):
+        super().__init__()
+        if resnet_type == 18:
+            self.resnet = ResNet18()
+        elif resnet_type == 50:
+            self.resnet = ResNet50()
+        else:
+            raise InvalidResnetType
+
+        self.bert_model = BertModel.from_pretrained("bert-base-uncased")
+        self.bert_tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+        self.embed = nn.Embedding(
+            num_embeddings=vocab_size,
+            embedding_dim=embedding_dim,
+        )
+        self.lstm_bidirectional = lstm_bidirectional
+        self.lstm = nn.LSTM(
+            input_size=embedding_dim,
+            hidden_size=lstm_hidden_dim,
+            batch_first=True,
+            bidirectional=lstm_bidirectional,
+        )
+        lstm_output_hidden_dim = (2 if lstm_bidirectional else 1) * lstm_hidden_dim
+
+        self.fc = nn.Sequential(
+            nn.Linear(512 + lstm_output_hidden_dim, 512),
+            nn.ReLU(inplace=True),
+            nn.Linear(512, n_answer),
+            nn.Softmax(dim=1),
+        )
+
+    def forward(self, image: torch.Tensor, question: torch.Tensor):
+        # image: (*, C, H, W)
+        # question: (*,), type=str
+        # -> (*, n_answer)
+        image_feature = self.resnet(image)  # (*, C, H, W)->(*, 512)
+
+        question = self.bert_tokenizer.encode(
+            question,
+            add_special_tokens=True,
+            truncation=True,
+            padding=True,
+            return_tensors="pt",
+        )  # (*, L)->(*, embedding_dim)
+        with torch.no_grad():
+            outputs = self.bert_model(**question)
+            print(outputs.shape)
+
+        question_feature = outputs[0]
+
+        x = torch.cat([image_feature, question_feature], dim=1)  # (*, 512 + lstm_output_hidden_dim)
+        x = self.fc(x)  # (*, 512 + lstm_output_hidden_dim)->(*, n_answer)
+
+        return x
 
 
 class VQAEmbeddingModel(nn.Module):
@@ -641,4 +725,5 @@ def main_onehot_answer(cfg: DictConfig):
 
 
 if __name__ == "__main__":
-    main_onehot_answer()
+    print(get_question_max_sentence_length())
+    # main_onehot_answer()
