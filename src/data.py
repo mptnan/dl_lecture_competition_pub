@@ -398,7 +398,7 @@ def global_mode_except_unanswerable_tensors(train_json_path: str, aidx: AnswerIn
     answers = data["answers"]
     res = {}
     for k, ans_l in answers.items():
-        tmp = [aidx.str_to_idx[process_answer(ans["answer"])] for ans in ans_l if ans["answere"] != "unanswerable"]
+        tmp = [aidx.str_to_idx[process_answer(ans["answer"])] for ans in ans_l if ans["answer"] != "unanswerable"]
         if not tmp:
             tmp = [aidx.str_to_idx["unanswerable"]]
         res[k] = answer_indices_to_tensor(multimode(tmp), len(aidx))
