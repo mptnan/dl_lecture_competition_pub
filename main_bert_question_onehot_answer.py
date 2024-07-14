@@ -90,8 +90,8 @@ def train(
         if timer is not None:
             timer.push()
 
-        prods.append(torch.sum(pred * answer_tensor, dim=0))
-        preds.append(pred.argmax(1))
+        prods.append(torch.sum(pred * answer_tensor, dim=0).to("cpu"))
+        preds.append(pred.argmax(1).to("cpu"))
         indices.extend(idx)
 
     preds = torch.cat(preds, dim=0)
