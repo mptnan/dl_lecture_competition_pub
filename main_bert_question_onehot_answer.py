@@ -109,6 +109,7 @@ def main(cfg: DictConfig):
         [
             transforms.Resize((224, 224)),
             transforms.ToTensor(),
+            transforms.RandomRotation((-180, 180)),
         ]
     )
 
