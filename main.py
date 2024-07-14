@@ -15,6 +15,7 @@ from src import (
     Timer,
     VQA_criterion,
     VQACorpusDataset,
+    VQAEmbeddingModel,
     get_all_sentences,
     get_answers,
     get_yes_no,
