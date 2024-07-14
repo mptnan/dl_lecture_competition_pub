@@ -120,19 +120,14 @@ class VQABertEmbeddingModel(nn.Module):
             padding=True,
             return_tensors="pt",
         )  # (*, L)->(*, embedding_dim)
-        print("input_ids: ", len(question_input["input_ids"]))
-        print("attention_mask: ", len(question_input["attention_mask"]))
-        question_input = {
-            "input_ids": question_input["input_ids"].to(self.device),
-            "attention_mask": question_input["attention_mask"].to(self.device),
-        }
+        question_input = {k: v.to(self.device) for k, v in question_input.items()}
 
         with torch.no_grad():
             outputs = self.bert_model(**question_input)
-            print("outputs: ", outputs.last_hidden_state.shape)
-            raise KeyboardInterrupt
 
-        question_feature = outputs[0]
+        question_feature = outputs.last_hidden_state[:, 0, :]  # [CLS]トークンの特徴量を使用
+        print(question_feature.shape)
+        raise KeyboardInterrupt
 
         x = torch.cat([image_feature, question_feature], dim=1)  # (*, 512 + lstm_output_hidden_dim)
         x = self.fc(x)  # (*, 512 + lstm_output_hidden_dim)->(*, n_answer)
