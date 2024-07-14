@@ -181,24 +181,6 @@ def main(cfg: DictConfig):
         answer=False,
     )
 
-    # train_size = len(trainval_dataset) * 0.8
-    # val_size = len(trainval_dataset) - train_size
-    # train_dataset, val_dataset = torch.utils.data.random_split(trainval_dataset, [train_size, val_size])
-
-    # train_loader = torch.utils.data.DataLoader(
-    #     train_dataset,
-    #     batch_size=128,
-    #     shuffle=True,
-    #     num_workers=num_workers,
-    # )
-
-    # val_loader = torch.utils.data.DataLoader(
-    #     val_dataset,
-    #     batch_size=len(val_dataset),
-    #     shuffle=False,
-    #     num_workers=num_workers,
-    # )
-
     train_loader = torch.utils.data.DataLoader(
         trainval_dataset,
         batch_size=128,
