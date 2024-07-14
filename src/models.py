@@ -1,4 +1,8 @@
+from typing import Literal
+
+import torch
 import torch.nn as nn
+from transformers import BertModel, BertTokenizer
 
 
 # 3. モデルのの実装
@@ -117,8 +121,13 @@ def ResNet50():
     return ResNet(BottleneckBlock, [3, 4, 6, 3])
 
 
-# the distributed one
 class VQASampleModel(nn.Module):
+    """
+    配布されたモデル
+    画像エンコーダ: ResNet
+    質問エンコーダ: One-Hotベクトル + MLP
+    """
+
     def __init__(self, vocab_size: int, n_answer: int):
         super().__init__()
         self.resnet = ResNet18()  #
@@ -139,5 +148,138 @@ class VQASampleModel(nn.Module):
 
         x = torch.cat([image_feature, question_feature], dim=1)
         x = self.fc(x)
+
+        return x
+
+
+class InvalidResnetType(RuntimeError):
+    pass
+
+
+class VQAEmbeddingModel(nn.Module):
+    """
+    質問をEmbedしたモデル
+    画像エンコーダ: ResNet
+    質問エンコーダ: Embedding + LSTM
+    """
+
+    def __init__(
+        self,
+        vocab_size: int,
+        embedding_dim: int,
+        resnet_type: Literal[18, 50],
+        lstm_hidden_dim: int,
+        lstm_bidirectional: bool,
+        n_answer: int,
+    ):
+        super().__init__()
+        if resnet_type == 18:
+            self.resnet = ResNet18()
+        elif resnet_type == 50:
+            self.resnet = ResNet50()
+        else:
+            raise InvalidResnetType
+
+        self.embed = nn.Embedding(
+            num_embeddings=vocab_size,
+            embedding_dim=embedding_dim,
+        )
+        self.lstm_bidirectional = lstm_bidirectional
+        self.lstm = nn.LSTM(
+            input_size=embedding_dim,
+            hidden_size=lstm_hidden_dim,
+            batch_first=True,
+            bidirectional=lstm_bidirectional,
+        )
+        lstm_output_hidden_dim = (2 if lstm_bidirectional else 1) * lstm_hidden_dim
+
+        self.fc = nn.Sequential(
+            nn.Linear(512 + lstm_output_hidden_dim, 512),
+            nn.ReLU(inplace=True),
+            nn.Linear(512, n_answer),
+            nn.Softmax(dim=1),
+        )
+
+    def forward(self, image: torch.Tensor, question: torch.Tensor):
+        # image: (*, C, H, W)
+        # question: (*, L)  L: length of a sentence
+        # -> (*, n_answer)
+        image_feature = self.resnet(image)  # (*, C, H, W)->(*, 512)
+
+        question = self.embed(question)  # (*, L)->(*, embedding_dim)
+        _, (h, _) = self.lstm(question)  # (*, embedding_dim)->(n_direction, *, lstm_hidden_dim)
+        if self.lstm_bidirectional:
+            question_feature = torch.cat([h[0], h[1]], dim=1)  # (*, lstm_output_hidden_dim)
+        else:
+            question_feature = h[0]
+
+        x = torch.cat([image_feature, question_feature], dim=1)  # (*, 512 + lstm_output_hidden_dim)
+        x = self.fc(x)  # (*, 512 + lstm_output_hidden_dim)->(*, n_answer)
+
+        return x
+
+
+class VQABertEmbeddingModel(nn.Module):
+    """
+    質問のエンコードにBertを用いたモデル
+    画像エンコーダ: ResNet
+    質問エンコーダ: BERT
+    """
+
+    def __init__(
+        self,
+        vocab_size: int,
+        embedding_dim: int,
+        resnet_type: Literal[18, 50],
+        n_answer: int,
+        device: str,
+    ):
+        super().__init__()
+        if resnet_type == 18:
+            self.resnet = ResNet18()
+        elif resnet_type == 50:
+            self.resnet = ResNet50()
+        else:
+            raise InvalidResnetType
+
+        self.bert_model = BertModel.from_pretrained("bert-base-uncased")
+        self.bert_tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
+        self.embed = nn.Embedding(
+            num_embeddings=vocab_size,
+            embedding_dim=embedding_dim,
+        )
+
+        self.fc = nn.Sequential(
+            nn.Linear(512 + 768, 512),
+            nn.ReLU(inplace=True),
+            nn.Linear(512, n_answer),
+            nn.Softmax(dim=1),
+        )
+
+        self.device = device
+
+    def forward(self, image: torch.Tensor, question: torch.Tensor):
+        # image: (*, C, H, W)
+        # question: (*,), type=str
+        # -> (*, n_answer)
+        image_feature = self.resnet(image)  # (*, C, H, W)->(*, 512)
+
+        question_input = self.bert_tokenizer(
+            question,
+            add_special_tokens=True,
+            truncation=True,
+            padding=True,
+            return_tensors="pt",
+        )  # (*, L)->(*, embedding_dim)
+        question_input = {k: v.to(self.device) for k, v in question_input.items()}
+
+        with torch.no_grad():
+            outputs = self.bert_model(**question_input)
+
+        question_feature = outputs.last_hidden_state[:, 0, :]  # [CLS]トークンの特徴量を使用
+        # (*, 768)
+
+        x = torch.cat([image_feature, question_feature], dim=1)  # (*, 512 + 768)
+        x = self.fc(x)  # (*, 512 + 768)->(*, n_answer)
 
         return x

@@ -283,7 +283,11 @@ class VQACorpusDataset(torch.utils.data.Dataset):
         return len(self.df)
 
 
-def process_answer(text: str) -> str:  # same as distributed process_text function
+def process_answer(text: str) -> str:
+    """
+    配布されたprocess_textに同じ
+    answerの前処理として常に使う
+    """
     # lowercase
     text = text.lower()
 

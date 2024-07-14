@@ -14,16 +14,15 @@ from src import (
     CustomVocab,
     Timer,
     VQA_criterion,
-    VQACorpusDataset,
+    VQABertEmbeddingModel,
+    VQAStrQuestionOneHotAnswerDataset,
     get_all_sentences,
-    get_answers,
     get_yes_no,
     preprocess,
     process_text,
 )
 
 
-# 4. 学習の実装
 def train(
     model,
     dataloader,
@@ -36,12 +35,16 @@ def train(
 
     total_loss = 0
     total_acc = 0
-    simple_acc = 0
 
     start = time.time()
     if timer is not None:
         timer.push()
-    for image, question, answers, mode_answer in tqdm(
+    for (
+        image,
+        question,
+        answer_tensor,
+        answers,
+    ) in tqdm(
         dataloader,
         total=len(dataloader),
         leave=False,
@@ -49,11 +52,9 @@ def train(
         if timer is not None:
             timer.push(tag="load_data")
 
-        image, question, answers, mode_answer = (
+        image, answer_tensor = (
             image.to(device),
-            question.to(device),
-            answers.to(device),
-            mode_answer.to(device),
+            answer_tensor.to(device),
         )
         if timer is not None:
             timer.push(tag="to_device")
@@ -62,7 +63,7 @@ def train(
         if timer is not None:
             timer.push(tag="pred")
 
-        loss = criterion(pred, mode_answer.squeeze())
+        loss = criterion(pred, answer_tensor)
         if timer is not None:
             timer.push(tag="calc_loss")
 
@@ -76,52 +77,16 @@ def train(
             timer.push(tag="step")
 
         total_loss += loss.item()
+
         total_acc += VQA_criterion(pred.argmax(1), answers)  # VQA accuracy
-        simple_acc += (pred.argmax(1) == mode_answer).float().mean().item()  # simple accuracy
         if timer is not None:
             timer.push()
 
-    return total_loss / len(dataloader), total_acc / len(dataloader), simple_acc / len(dataloader), time.time() - start
-
-
-def eval(
-    model,
-    dataloader,
-    criterion,
-    device,
-):
-    model.eval()
-
-    total_loss = 0
-    total_acc = 0
-    simple_acc = 0
-
-    start = time.time()
-    for image, question, answers, mode_answer in tqdm(
-        dataloader,
-        total=len(dataloader),
-        leave=False,
-    ):
-        image, question, answers, mode_answer = (
-            image.to(device),
-            question.to(device),
-            answers.to(device),
-            mode_answer.to(device),
-        )
-
-        pred = model(image, question)
-        loss = criterion(pred, mode_answer.squeeze())
-
-        total_loss += loss.item()
-        total_acc += VQA_criterion(pred.argmax(1), answers)  # VQA accuracy
-        simple_acc += (pred.argmax(1) == mode_answer).mean().item()  # simple accuracy
-
-    return total_loss / len(dataloader), total_acc / len(dataloader), simple_acc / len(dataloader), time.time() - start
+    return total_loss / len(dataloader), total_acc / len(dataloader), time.time() - start
 
 
 @hydra.main(version_base=None, config_path="configs", config_name="config")
 def main(cfg: DictConfig):
-
     (
         logger,
         seed,
@@ -154,49 +119,20 @@ def main(cfg: DictConfig):
         vocab.add_sentence(s)
     vocab.set_vocab(min_freq=25)
 
-    # make answers list
-    answers = get_answers()
-    answer_vocab = CustomVocab(text_processor=process_text, tokenizer=lambda x: [x])
-    for a in answers:
-        answer_vocab.add_sentence(a)
-    answer_vocab.set_vocab(min_freq=1)
-
-    trainval_dataset = VQACorpusDataset(
+    trainval_dataset = VQAStrQuestionOneHotAnswerDataset(
         df_path="./data/train.json",
         image_dir="./data/train",
-        len_sentence=256,
-        vocab=vocab,
         transform=transform,
         answer=True,
-        answer_vocab=answer_vocab,
+        onehot_type="most_confident_mode",
     )
 
-    test_dataset = VQACorpusDataset(
+    test_dataset = VQAStrQuestionOneHotAnswerDataset(
         df_path="./data/valid.json",
         image_dir="./data/valid",
-        len_sentence=256,
-        vocab=vocab,
         transform=transform,
         answer=False,
     )
-
-    # train_size = len(trainval_dataset) * 0.8
-    # val_size = len(trainval_dataset) - train_size
-    # train_dataset, val_dataset = torch.utils.data.random_split(trainval_dataset, [train_size, val_size])
-
-    # train_loader = torch.utils.data.DataLoader(
-    #     train_dataset,
-    #     batch_size=128,
-    #     shuffle=True,
-    #     num_workers=num_workers,
-    # )
-
-    # val_loader = torch.utils.data.DataLoader(
-    #     val_dataset,
-    #     batch_size=len(val_dataset),
-    #     shuffle=False,
-    #     num_workers=num_workers,
-    # )
 
     train_loader = torch.utils.data.DataLoader(
         trainval_dataset,
@@ -211,14 +147,13 @@ def main(cfg: DictConfig):
         shuffle=False,
         num_workers=num_workers,
     )
-
-    model = VQAEmbeddingModel(
+    aidx = trainval_dataset.aidx
+    model = VQABertEmbeddingModel(
         vocab_size=len(vocab),
-        resnet_type=18,
+        resnet_type=50,
         embedding_dim=512,
-        n_answer=len(answer_vocab),
-        lstm_bidirectional=False,
-        lstm_hidden_dim=512,
+        n_answer=len(aidx),
+        device=device,
     ).to(device)
 
     # optimizer / criterion
@@ -231,7 +166,7 @@ def main(cfg: DictConfig):
     # train model
     # 10 mins of TPU / epoch
     for epoch in range(num_epoch):
-        train_loss, train_acc, train_simple_acc, train_time = train(
+        train_loss, train_acc, train_time = train(
             model,
             train_loader,
             optimizer,
@@ -245,7 +180,6 @@ def main(cfg: DictConfig):
                 f"train time: {train_time:.2f} [s]",
                 f"train loss: {train_loss:.4f}",
                 f"train acc: {train_acc:.4f}",
-                f"train simple acc: {train_simple_acc:.4f}",
             ]
         )
         logger.info(_msg)
@@ -275,7 +209,7 @@ def main(cfg: DictConfig):
         pred = pred.argmax(1).cpu().item()
         submission.append(pred)
 
-    submission = [answer_vocab.itow(id) for id in submission]
+    submission = [aidx.idx_to_str[id] for id in submission]
     submission = np.array(submission)
     torch.save(model.state_dict(), runtime_output_dir / "model.pth")
     np.save(hydra_output_dir / "submission.npy", submission)
