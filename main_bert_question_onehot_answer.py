@@ -85,6 +85,16 @@ def train(
     return total_loss / len(dataloader), total_acc / len(dataloader), time.time() - start
 
 
+class gcn:
+    def __init__(self):
+        pass
+
+    def __call__(self, x):
+        mean = torch.mean(x)
+        std = torch.std(x)
+        return (x - mean) / (std + 10 ** (-6))
+
+
 @hydra.main(version_base=None, config_path="configs", config_name="config")
 def main(cfg: DictConfig):
     (
@@ -110,6 +120,7 @@ def main(cfg: DictConfig):
             transforms.Resize((224, 224)),
             transforms.ToTensor(),
             transforms.RandomRotation((-180, 180)),
+            gcn(),
         ]
     )
 
