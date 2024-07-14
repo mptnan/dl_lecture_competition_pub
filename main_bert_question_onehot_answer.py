@@ -30,6 +30,8 @@ def train(
     criterion,
     device,
     timer=None,
+    n_top=10,
+    n_bottom=10,
 ):
     model.train()
 
@@ -39,11 +41,17 @@ def train(
     start = time.time()
     if timer is not None:
         timer.push()
+
+    preds = []
+    answer_tensors = []
+    indices = []
+
     for (
         image,
         question,
         answer_tensor,
         answers,
+        idx,
     ) in tqdm(
         dataloader,
         total=len(dataloader),
@@ -81,6 +89,24 @@ def train(
         total_acc += VQA_criterion(pred.argmax(1), answers)  # VQA accuracy
         if timer is not None:
             timer.push()
+
+        preds.append(pred)
+        answer_tensors.append(answer_tensor)
+        indices.extend(idx)
+
+    preds = torch.cat(preds, dim=0)  # (batch_size, embed_size)
+    answer_tensors = torch.cat(answer_tensors, dim=0)  # (batch_size, embed_size)
+    prod = torch.sum(preds * answer_tensors.T, dim=1)
+    topk_values, topk_indices = torch.topk(prod, k=n_top)
+    bottomk_values, bottomk_indices = torch.topk(-prod, k=n_bottom)
+    bottomk_values *= -1
+    # 内積の上位と下位を出力
+    print("top: value, id, pred, answer\n")
+    for v, ind in zip(topk_values, topk_indices):
+        print(v, ind, preds[ind].argmax(), answer_tensors[ind].argmax())
+    print("bottom: value, id, pred, answer\n")
+    for v, ind in zip(bottomk_values, bottomk_indices):
+        print(v, ind, preds[ind].argmax(), answer_tensors[ind].argmax())
 
     return total_loss / len(dataloader), total_acc / len(dataloader), time.time() - start
 
