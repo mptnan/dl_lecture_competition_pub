@@ -99,7 +99,7 @@ class VQABertEmbeddingModel(nn.Module):
         )
 
         self.fc = nn.Sequential(
-            nn.Linear(512, 512),
+            nn.Linear(512 + 768, 512),
             nn.ReLU(inplace=True),
             nn.Linear(512, n_answer),
             nn.Softmax(dim=1),
@@ -126,11 +126,10 @@ class VQABertEmbeddingModel(nn.Module):
             outputs = self.bert_model(**question_input)
 
         question_feature = outputs.last_hidden_state[:, 0, :]  # [CLS]トークンの特徴量を使用
-        print(question_feature.shape)
-        raise KeyboardInterrupt
+        # (*, 768)
 
-        x = torch.cat([image_feature, question_feature], dim=1)  # (*, 512 + lstm_output_hidden_dim)
-        x = self.fc(x)  # (*, 512 + lstm_output_hidden_dim)->(*, n_answer)
+        x = torch.cat([image_feature, question_feature], dim=1)  # (*, 512 + 768)
+        x = self.fc(x)  # (*, 512 + 768)->(*, n_answer)
 
         return x
 
