@@ -391,6 +391,21 @@ def most_confident_mode_tensors(train_json_path: str, aidx: AnswerIndex) -> Mapp
     return res
 
 
+def global_mode_except_unanswerable_tensors(train_json_path: str, aidx: AnswerIndex) -> Mapping[str, torch.Tensor]:
+    # 10個の回答のうち最も信頼性の高い回答のうちの最頻値
+    with open(train_json_path) as f:
+        data = json.load(f)
+    answers = data["answers"]
+    res = {}
+    for k, ans_l in answers.items():
+        tmp = [aidx.str_to_idx[process_answer(ans["answer"])] for ans in ans_l if ans["answere"] != "unanswerable"]
+        if not tmp:
+            tmp = [aidx.str_to_idx["unanswerable"]]
+        res[k] = answer_indices_to_tensor(multimode(tmp), len(aidx))
+
+    return res
+
+
 def one_hot_vector_tensor(idx: int, max_size: int) -> torch.Tensor:
     t = torch.zeros(max_size)
     t[idx] = 1
@@ -543,6 +558,7 @@ class VQAStrQuestionOneHotAnswerDataset(torch.utils.data.Dataset):
                 "global_mode",
                 "most_confident_mode",
                 "confidence_weighted_average",
+                "global_mode_except_unanswerable",
             ]
         ] = None,
         confidence_weight: Optional[Mapping[str, float]] = None,
@@ -561,6 +577,8 @@ class VQAStrQuestionOneHotAnswerDataset(torch.utils.data.Dataset):
             self.aidx = all_answers_list(df_path)
             if onehot_type == "global_mode":
                 self.answer_tensors = global_mode_tensors(df_path, self.aidx)
+            elif onehot_type == "global_mode_except_unanswerable":
+                self.answer_tensors = global_mode_except_unanswerable_tensors(df_path, self.aidx)
             elif onehot_type == "most_confident_mode":
                 self.answer_tensors = most_confident_mode_tensors(df_path, self.aidx)
             elif onehot_type == "confidence_weighted_average":
