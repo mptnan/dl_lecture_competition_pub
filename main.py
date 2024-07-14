@@ -113,16 +113,7 @@ class VQABertEmbeddingModel(nn.Module):
         # -> (*, n_answer)
         image_feature = self.resnet(image)  # (*, C, H, W)->(*, 512)
 
-        print("question: ", len(question), question[0])
-        question_input = self.bert_tokenizer.encode_plus(
-            question[0],
-            add_special_tokens=True,
-            truncation=True,
-            padding=True,
-            return_tensors="pt",
-        )
-        print("test_output: ", question_input)
-        question_input = self.bert_tokenizer.encode_plus(
+        question_input = self.bert_tokenizer(
             question,
             add_special_tokens=True,
             truncation=True,
