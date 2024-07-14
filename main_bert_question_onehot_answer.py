@@ -42,8 +42,8 @@ def train(
     if timer is not None:
         timer.push()
 
+    prods = []
     preds = []
-    answer_tensors = []
     indices = []
 
     for (
@@ -90,23 +90,23 @@ def train(
         if timer is not None:
             timer.push()
 
-        preds.append(pred)
-        answer_tensors.append(answer_tensor)
+        prods.append(torch.sum(pred * answer_tensor.T, dim=0))
+        preds.append(pred.argmax(1))
         indices.extend(idx)
 
-    preds = torch.cat(preds, dim=0)  # (batch_size, embed_size)
-    answer_tensors = torch.cat(answer_tensors, dim=0)  # (batch_size, embed_size)
-    prod = torch.sum(preds * answer_tensors.T, dim=1)
-    topk_values, topk_indices = torch.topk(prod, k=n_top)
-    bottomk_values, bottomk_indices = torch.topk(-prod, k=n_bottom)
+    preds = torch.cat(preds, dim=0)
+    prods = torch.cat(prods, dim=0)
+
+    topk_values, topk_indices = torch.topk(prods, k=n_top)
+    bottomk_values, bottomk_indices = torch.topk(-prods, k=n_bottom)
     bottomk_values *= -1
     # 内積の上位と下位を出力
     print("top: value, id, pred, answer\n")
     for v, ind in zip(topk_values, topk_indices):
-        print(v, ind, preds[ind].argmax(), answer_tensors[ind].argmax())
+        print(v, ind, preds[ind].argmax(), dataloader.dataset[int(ind)])
     print("bottom: value, id, pred, answer\n")
     for v, ind in zip(bottomk_values, bottomk_indices):
-        print(v, ind, preds[ind].argmax(), answer_tensors[ind].argmax())
+        print(v, ind, preds[ind].argmax(), dataloader.dataset[int(ind)])
 
     return total_loss / len(dataloader), total_acc / len(dataloader), time.time() - start
 
