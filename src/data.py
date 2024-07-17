@@ -636,13 +636,15 @@ class VQAStrQuestionOneHotAnswerDataset(torch.utils.data.Dataset):
     def __len__(self) -> int:
         return len(self.questions)
 
-    def get_weighted_sampler(self, count_threshould=1e-1):
+    def get_weighted_sampler(self, count_threshould: float = 1e-1, bias: Mapping[str, float] = {}):
         answers = torch.stack(list(self.answer_tensors.values()))
 
         answer_sum = answers.sum(dim=0)
 
         answer_weights = (answer_sum >= count_threshould) / torch.clamp(answer_sum, min=1e-2)
         data_weights = torch.mv(answers, answer_weights)
+        for k, v in bias.items():
+            data_weights[self.aidx.str_to_idx[k]] *= v
         pd.DataFrame(data_weights.numpy()).to_csv("data_weights.csv", index=False)
         sampler = WeightedRandomSampler(
             data_weights,
