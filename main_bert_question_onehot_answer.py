@@ -158,7 +158,6 @@ def main(cfg: DictConfig):
     train_loader = torch.utils.data.DataLoader(
         trainval_dataset,
         batch_size=128,
-        shuffle=True,
         num_workers=num_workers,
         sampler=sampler,
     )
