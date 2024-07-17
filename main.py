@@ -180,6 +180,7 @@ def main(cfg: DictConfig):
         transform=transform,
         answer=True,
         onehot_type="global_mode",
+        allow_multimode=False,
     )
     aidx = trainval_dataset.aidx
 

@@ -357,7 +357,11 @@ def answer_indices_to_tensor(ints: list[int], max_size: int) -> torch.Tensor:
     return res / torch.sum(res)
 
 
-def global_mode_tensors(train_json_path: str, aidx: AnswerIndex) -> Mapping[str, torch.Tensor]:
+def global_mode_tensors(
+    train_json_path: str,
+    aidx: AnswerIndex,
+    allow_multimode: bool = True,
+) -> Mapping[str, torch.Tensor]:
     # 10個の回答のうちの最頻値
     with open(train_json_path) as f:
         data = json.load(f)
@@ -365,7 +369,10 @@ def global_mode_tensors(train_json_path: str, aidx: AnswerIndex) -> Mapping[str,
     res = {}
     for k, ans_l in answers.items():
         tmp = [aidx.str_to_idx[process_answer(ans["answer"])] for ans in ans_l]
-        res[k] = answer_indices_to_tensor(multimode(tmp), len(aidx))
+        if allow_multimode:
+            res[k] = answer_indices_to_tensor(multimode(tmp), len(aidx))
+        else:
+            res[k] = answer_indices_to_tensor([mode(tmp)], len(aidx))
 
     return res
 
@@ -693,6 +700,7 @@ class VQAOneHotAnswerDataset2(torch.utils.data.Dataset):
             ]
         ] = None,
         confidence_weight: Optional[Mapping[str, float]] = None,
+        allow_multimode: bool = True,
     ):
         self.transform = transform  # 画像の前処理
         self.image_dir = image_dir  # 画像ファイルのディレクトリ
@@ -718,7 +726,7 @@ class VQAOneHotAnswerDataset2(torch.utils.data.Dataset):
         if self.answer:
             self.aidx = all_answers_list(df_path)
             if onehot_type == "global_mode":
-                self.answer_tensors = global_mode_tensors(df_path, self.aidx)
+                self.answer_tensors = global_mode_tensors(df_path, self.aidx, allow_multimode=allow_multimode)
             elif onehot_type == "global_mode_except_unanswerable":
                 self.answer_tensors = global_mode_except_unanswerable_tensors(df_path, self.aidx)
             elif onehot_type == "most_confident_mode":
