@@ -646,7 +646,7 @@ class VQAStrQuestionOneHotAnswerDataset(torch.utils.data.Dataset):
             answer_weights[self.aidx.str_to_idx[k]] *= v
 
         data_weights = torch.mv(answers, answer_weights)
-        pd.DataFrame(data_weights.numpy()).to_csv("data_weights.csv", index=False)
+        pd.DataFrame(data_weights.numpy()).to_csv("data_weights.csv", index=False, header=None)
         sampler = WeightedRandomSampler(
             data_weights,
             len(self),
