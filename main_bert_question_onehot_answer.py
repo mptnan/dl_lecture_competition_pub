@@ -1,5 +1,6 @@
 import shutil
 import time
+from collections import Counter
 
 import hydra
 import numpy as np
@@ -89,27 +90,9 @@ def train(
         total_acc += VQA_criterion(pred.argmax(1), answers)  # VQA accuracy
         if timer is not None:
             timer.push()
-        pred = pred.to("cpu")
-        answer_tensor = answer_tensor.to("cpu")
-        prods.append(torch.sum(pred * answer_tensor, dim=0))
-        preds.append(pred.argmax(1))
-        indices.extend(idx)
+        preds.extend(list(pred.argmax(1)))
 
-    preds = torch.cat(preds, dim=0)
-    prods = torch.cat(prods, dim=0)
-
-    topk_values, topk_indices = torch.topk(prods, k=n_top)
-    bottomk_values, bottomk_indices = torch.topk(-prods, k=n_bottom)
-    bottomk_values *= -1
-    # 内積の上位と下位を出力
-    print("top: value, id, pred, answer\n")
-    for v, ind in zip(topk_values, topk_indices):
-        print(v, ind, preds[ind].argmax(), dataloader.dataset[int(ind)])
-    print("bottom: value, id, pred, answer\n")
-    for v, ind in zip(bottomk_values, bottomk_indices):
-        print(v, ind, preds[ind].argmax(), dataloader.dataset[int(ind)])
-
-    return total_loss / len(dataloader), total_acc / len(dataloader), time.time() - start
+    return total_loss / len(dataloader), total_acc / len(dataloader), time.time() - start, preds
 
 
 class gcn:
@@ -205,7 +188,7 @@ def main(cfg: DictConfig):
     # train model
     # 10 mins of TPU / epoch
     for epoch in range(num_epoch):
-        train_loss, train_acc, train_time = train(
+        train_loss, train_acc, train_time, preds = train(
             model,
             train_loader,
             optimizer,
@@ -222,6 +205,12 @@ def main(cfg: DictConfig):
             ]
         )
         logger.info(_msg)
+        c = Counter(preds)
+        _msg = "preds freq" + "\n".join(
+            [f"{aidx.idx_to_str[idx]} {freq}/{len(preds)}" for idx, freq in c.most_common()],
+        )
+        logger.info(_msg)
+
         epoch_timer.push()
         logger.info(f"epoch took {epoch_timer.last_lap()/60:.2f} minutes")
 
