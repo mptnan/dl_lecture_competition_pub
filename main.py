@@ -208,7 +208,7 @@ def main(cfg: DictConfig):
     )
 
     model = VQASampleModel(
-        vocab_size=len(trainval_dataset.idx2question),
+        vocab_size=len(trainval_dataset.idx2question) + 1,
         n_answer=len(trainval_dataset.aidx),
     ).to(device)
 
