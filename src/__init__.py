@@ -4,6 +4,7 @@ from .data import (
     VQACorpusDataset,
     VQADataset,
     VQAOneHotAnswerDataset,
+    VQAOneHotAnswerDataset2,
     VQAStrQuestionOneHotAnswerDataset,
     process_answer,
     process_text,
