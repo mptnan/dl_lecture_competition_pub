@@ -442,13 +442,24 @@ def confidence_weighted_average_tensors(
     return res
 
 
-def get_answers(train_json_path: str, aidx: AnswerIndex):
+def get_answers(train_json_path: str, aidx: AnswerIndex) -> Mapping[str, list[int]]:
     with open(train_json_path) as f:
         data = json.load(f)
     answers = data["answers"]
     res: Mapping[str, list[int]] = {}
     for k, ans_l in answers.items():
         res[k] = [aidx.str_to_idx[process_answer(ans["answer"])] for ans in ans_l]
+
+    return res
+
+
+def get_answers_tensor(train_json_path: str, aidx: AnswerIndex) -> torch.Tensor:  # (n_questions, n_answer_vocab)
+    with open(train_json_path) as f:
+        data = json.load(f)
+    answers = data["answers"]
+    res: Mapping[str, list[int]] = torch.full((len(answers), len(answers["0"])), 0.0)
+    for k, ans_l in answers.items():
+        res[int(k)] = torch.tensor([aidx.str_to_idx[process_answer(ans["answer"])] for ans in ans_l])
 
     return res
 
@@ -591,7 +602,7 @@ class VQAStrQuestionOneHotAnswerDataset(torch.utils.data.Dataset):
             else:
                 raise NoModeTypeError
 
-            self.answers = get_answers(df_path, self.aidx)
+            self.answers = get_answers_tensor(df_path, self.aidx)
 
     def __getitem__(self, idx: int) -> Union[
         tuple[
@@ -650,7 +661,7 @@ class VQAStrQuestionOneHotAnswerDataset(torch.utils.data.Dataset):
             for exclude_word in exclude:
                 exclude_int = self.aidx.str_to_idx[exclude_word]
                 for i in range(answers.shape[1]):
-                    exclude_tensor |= answers[:, i] == exclude_int
+                    exclude_tensor |= self.answers[:, i] == exclude_int
 
         answer_weights = (answer_sum >= count_threshould) / torch.clamp(answer_sum, min=1e-2)  # (n_answer_vocab,)
         for k, v in bias.items():
