@@ -182,6 +182,10 @@ def main(cfg: DictConfig):
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=1e-5)
 
+    with open("aidx.txt", "w") as f:
+        for i in aidx.idx_to_str.values():
+            f.write(f"{i}\n")
+
     epoch_timer.push()
     logger.info(f"preparation took {epoch_timer.last_lap()/60:.2f} minutes")
 
@@ -207,7 +211,7 @@ def main(cfg: DictConfig):
         logger.info(_msg)
         c = Counter(preds)
         _msg = "preds freq" + "\n".join(
-            [f"{aidx.idx_to_str[idx]} {freq}/{len(preds)}" for idx, freq in c.most_common()],
+            [f"{aidx.idx_to_str[idx]} {freq}/{len(preds)}" for idx, freq in list(c.most_common())[:3]],
         )
         logger.info(_msg)
 
