@@ -43,9 +43,7 @@ def train(
     if timer is not None:
         timer.push()
 
-    prods = []
     preds = []
-    indices = []
 
     for (
         image,
@@ -211,7 +209,7 @@ def main(cfg: DictConfig):
         logger.info(_msg)
         c = Counter(preds)
         _msg = "preds freq:\n" + "\n".join(
-            [f"{aidx.idx_to_str[idx]} {freq}/{len(preds)}" for idx, freq in list(c.most_common())[:3]],
+            [f"{idx}, {aidx.idx_to_str[idx]}: {freq}/{len(preds)}" for idx, freq in list(c.most_common())[:3]],
         )
         logger.info(_msg)
 
