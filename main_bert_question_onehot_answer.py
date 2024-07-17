@@ -104,6 +104,24 @@ class gcn:
         return (x - mean) / (std + 10 ** (-6))
 
 
+def calculate_data_weights(dataset):
+    chosen_answers_tensor = torch.tensor([dataset[i][2] for i in range(len(dataset))])
+    print(chosen_answers_tensor.shape)
+    answer_sum = chosen_answers_tensor.sum(dim=0)
+    count_threshould = 1e-1
+    print(answer_sum.shape)
+    answer_weights = (answer_sum >= count_threshould) / answer_sum
+    print(answer_weights.shape)
+    data_weights = torch.mv(chosen_answers_tensor, answer_weights)
+    print(data_weights)
+    sampler = WeightedRandomSampler(
+        data_weights,
+        len(dataset),
+        replacement=True,
+    )
+    return sampler
+
+
 @hydra.main(version_base=None, config_path="configs", config_name="config")
 def main(cfg: DictConfig):
     (
@@ -148,30 +166,6 @@ def main(cfg: DictConfig):
         onehot_type="most_confident_mode",
     )
 
-    answer_tensor_sum = torch.zeros(len(trainval_dataset.aidx))
-    for i in range(len(trainval_dataset)):
-        answer_tensor_sum += trainval_dataset[i][2]
-
-    answer_weights = []
-    count_threshould = 1e-1
-    for i in answer_tensor_sum:
-        if i < count_threshould:
-            answer_weights.append(0.0)
-        else:
-            answer_weights.append(1 / i)
-    answer_weights = torch.tensor(answer_weights)
-    data_weights = []
-    for i in range(len(trainval_dataset)):
-        data_weights.append(torch.dot(answer_weights, trainval_dataset[i][2]))
-
-    print(Counter(data_weights))
-
-    sampler = WeightedRandomSampler(
-        data_weights,
-        len(trainval_dataset),
-        replacement=True,
-    )
-
     test_dataset = VQAStrQuestionOneHotAnswerDataset(
         df_path="./data/valid.json",
         image_dir="./data/valid",
@@ -179,6 +173,7 @@ def main(cfg: DictConfig):
         answer=False,
     )
 
+    sampler = calculate_data_weights(trainval_dataset)
     train_loader = torch.utils.data.DataLoader(
         trainval_dataset,
         batch_size=128,
