@@ -209,11 +209,7 @@ def main(cfg: DictConfig):
 
     model = VQASampleModel(
         vocab_size=len(vocab),
-        resnet_type=18,
-        embedding_dim=512,
         n_answer=len(answer_vocab),
-        lstm_bidirectional=False,
-        lstm_hidden_dim=512,
     ).to(device)
 
     # optimizer / criterion
