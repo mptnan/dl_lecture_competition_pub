@@ -7,6 +7,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from omegaconf import DictConfig
+from torch.utils.data import WeightedRandomSampler
 from torchtext.data.utils import get_tokenizer
 from torchvision import transforms
 from tqdm import tqdm
@@ -147,6 +148,23 @@ def main(cfg: DictConfig):
         onehot_type="most_confident_mode",
     )
 
+    answer_tensor_sum = torch.zeros(len(trainval_dataset))
+    for i in range(len(trainval_dataset)):
+        answer_tensor_sum += trainval_dataset[i][2]
+
+    weights = []
+    count_threshould = 1e-1
+    for i in answer_tensor_sum:
+        if i < count_threshould:
+            weights.append(0.0)
+        else:
+            weights.append(1 / i)
+    sampler = WeightedRandomSampler(
+        weights,
+        len(trainval_dataset),
+        replacement=True,
+    )
+
     test_dataset = VQAStrQuestionOneHotAnswerDataset(
         df_path="./data/valid.json",
         image_dir="./data/valid",
@@ -159,6 +177,7 @@ def main(cfg: DictConfig):
         batch_size=128,
         shuffle=True,
         num_workers=num_workers,
+        sampler=sampler,
     )
 
     test_loader = torch.utils.data.DataLoader(
