@@ -649,14 +649,14 @@ class VQAStrQuestionOneHotAnswerDataset(torch.utils.data.Dataset):
         if exclude:
             for exclude_word in exclude:
                 exclude_int = self.aidx.str_to_idx[exclude_word]
-                for i in range(len(answers.shape[1])):
+                for i in range(answers.shape[1]):
                     exclude_tensor |= answers[:, i] == exclude_int
 
         answer_weights = (answer_sum >= count_threshould) / torch.clamp(answer_sum, min=1e-2)  # (n_answer_vocab,)
         for k, v in bias.items():
             answer_weights[self.aidx.str_to_idx[k]] *= v
 
-        data_weights = torch.mv(answers, answer_weights) * torch.where(exclude_tensor, 0, 1) # (n_questions,)
+        data_weights = torch.mv(answers, answer_weights) * torch.where(exclude_tensor, 0, 1)  # (n_questions,)
         pd.DataFrame(data_weights.numpy()).to_csv("data_weights.csv", index=False, header=None)
         sampler = WeightedRandomSampler(
             data_weights,
