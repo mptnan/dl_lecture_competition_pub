@@ -275,7 +275,6 @@ class VQABertEmbeddingModel(nn.Module):
             nn.ReLU(inplace=True),
             nn.Dropout(p=0.5),
             nn.Linear(512, n_answer),
-            nn.Softmax(dim=1),
         )
 
         self.device = device
