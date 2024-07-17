@@ -637,10 +637,12 @@ class VQAStrQuestionOneHotAnswerDataset(torch.utils.data.Dataset):
         return len(self.questions)
 
     def get_weighted_sampler(self, count_threshould=1e-1):
-        answer_sum = torch.stack(list(self.answer_tensors.values())).sum(dim=0)
+        answers = torch.stack(list(self.answer_tensors.values()))
+
+        answer_sum = answers.sum(dim=0)
 
         answer_weights = (answer_sum >= count_threshould) / answer_sum
-        data_weights = torch.mv(self.answer_tensors, answer_weights)
+        data_weights = torch.mv(answers, answer_weights)
         sampler = WeightedRandomSampler(
             data_weights,
             len(self),
