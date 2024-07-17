@@ -247,7 +247,7 @@ class VQABertEmbeddingModel(nn.Module):
         elif net_type == "ResNet101":
             self.resnet = ResNet101()
         elif net_type == "DenseNet121":
-            self.resnet = models.densenet121(pretrained=False, num_classes=512)
+            self.resnet = models.densenet121(pretrained=False, num_classes=512, memory_efficient=True)
         else:
             raise InvalidResnetType
 
