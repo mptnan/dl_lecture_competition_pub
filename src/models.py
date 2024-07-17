@@ -121,6 +121,10 @@ def ResNet50():
     return ResNet(BottleneckBlock, [3, 4, 6, 3])
 
 
+def ResNet101():
+    return ResNet(BottleneckBlock, [3, 4, 23, 3])
+
+
 class VQASampleModel(nn.Module):
     """
     配布されたモデル
@@ -230,7 +234,7 @@ class VQABertEmbeddingModel(nn.Module):
         self,
         vocab_size: int,
         embedding_dim: int,
-        resnet_type: Literal[18, 50],
+        resnet_type: Literal[18, 50, 101],
         n_answer: int,
         device: str,
     ):
@@ -239,6 +243,8 @@ class VQABertEmbeddingModel(nn.Module):
             self.resnet = ResNet18()
         elif resnet_type == 50:
             self.resnet = ResNet50()
+        elif resnet_type == 101:
+            self.resnet = ResNet101()
         else:
             raise InvalidResnetType
 

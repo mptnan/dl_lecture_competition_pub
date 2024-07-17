@@ -170,7 +170,7 @@ def main(cfg: DictConfig):
     aidx = trainval_dataset.aidx
     model = VQABertEmbeddingModel(
         vocab_size=len(vocab),
-        resnet_type=50,
+        resnet_type=101,
         embedding_dim=512,
         n_answer=len(aidx),
         device=device,
