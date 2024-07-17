@@ -209,7 +209,7 @@ def main(cfg: DictConfig):
 
     model = VQASampleModel(
         vocab_size=len(trainval_dataset.idx2question),
-        n_answer=len(answer_vocab),
+        n_answer=len(trainval_dataset.aidx),
     ).to(device)
 
     # optimizer / criterion
