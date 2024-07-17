@@ -2,6 +2,7 @@ from typing import Literal
 
 import torch
 import torch.nn as nn
+from torchvision import models
 from transformers import BertModel, BertTokenizer
 
 
@@ -121,7 +122,7 @@ def ResNet50():
     return ResNet(BottleneckBlock, [3, 4, 6, 3])
 
 
-def ResNet101():
+def ResNet101():  # Out of memory
     return ResNet(BottleneckBlock, [3, 4, 23, 3])
 
 
@@ -234,17 +235,19 @@ class VQABertEmbeddingModel(nn.Module):
         self,
         vocab_size: int,
         embedding_dim: int,
-        resnet_type: Literal[18, 50, 101],
+        net_type: Literal["ResNet18", "ResNet50", "ResNet101", "DenseNet121"],
         n_answer: int,
         device: str,
     ):
         super().__init__()
-        if resnet_type == 18:
+        if net_type == "ResNet18":
             self.resnet = ResNet18()
-        elif resnet_type == 50:
+        elif net_type == "ResNet50":
             self.resnet = ResNet50()
-        elif resnet_type == 101:
+        elif net_type == "ResNet101":
             self.resnet = ResNet101()
+        elif net_type == "DenseNet121":
+            self.resnet = models.densenet121(pretrained=False, num_classes=512)
         else:
             raise InvalidResnetType
 
