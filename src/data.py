@@ -792,7 +792,7 @@ class VQAOneHotAnswerDataset2(torch.utils.data.Dataset):
                 question[-1] = 1  # 未知語
 
         if self.answer:
-            return image, torch.Tensor(question), self.answer_tensors[idx], self.answers[int(idx)]
+            return image, torch.Tensor(question), self.answer_tensors[str(idx)], self.answers[idx]
 
         else:
             return image, torch.Tensor(question)
