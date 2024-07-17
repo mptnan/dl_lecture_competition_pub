@@ -88,7 +88,7 @@ def train(
         total_acc += VQA_criterion(pred.argmax(1), answers)  # VQA accuracy
         if timer is not None:
             timer.push()
-        preds.extend(list(pred.argmax(1)))
+        preds.extend(pred.argmax(1).tolist())
 
     return total_loss / len(dataloader), total_acc / len(dataloader), time.time() - start, preds
 
