@@ -643,6 +643,7 @@ class VQAStrQuestionOneHotAnswerDataset(torch.utils.data.Dataset):
 
         answer_weights = (answer_sum >= count_threshould) / torch.clamp(answer_sum, min=1e-2)
         data_weights = torch.mv(answers, answer_weights)
+        pd.DataFrame(data_weights.numpy()).to_csv("data_weights.csv", index=False)
         sampler = WeightedRandomSampler(
             data_weights,
             len(self),
