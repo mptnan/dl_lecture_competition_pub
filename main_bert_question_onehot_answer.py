@@ -148,19 +148,26 @@ def main(cfg: DictConfig):
         onehot_type="most_confident_mode",
     )
 
-    answer_tensor_sum = torch.zeros(len(trainval_dataset))
+    answer_tensor_sum = torch.zeros(len(trainval_dataset.aidx))
     for i in range(len(trainval_dataset)):
         answer_tensor_sum += trainval_dataset[i][2]
 
-    weights = []
+    answer_weights = []
     count_threshould = 1e-1
     for i in answer_tensor_sum:
         if i < count_threshould:
-            weights.append(0.0)
+            answer_weights.append(0.0)
         else:
-            weights.append(1 / i)
+            answer_weights.append(1 / i)
+    answer_weights = torch.tensor(answer_weights)
+    data_weights = []
+    for i in range(len(trainval_dataset)):
+        data_weights.append(torch.dot(answer_weights, trainval_dataset[i][2]))
+
+    print(Counter(data_weights))
+
     sampler = WeightedRandomSampler(
-        weights,
+        data_weights,
         len(trainval_dataset),
         replacement=True,
     )
