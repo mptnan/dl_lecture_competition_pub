@@ -73,7 +73,7 @@ def train(
         if timer is not None:
             timer.push(tag="pred")
 
-        loss = criterion(pred, answer_tensor)
+        loss = criterion(pred, answer_tensor.argmax(1))
         if timer is not None:
             timer.push(tag="calc_loss")
 
