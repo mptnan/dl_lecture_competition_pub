@@ -207,6 +207,7 @@ def main(cfg: DictConfig):
             ]
         )
         logger.info(_msg)
+        print(preds)
         c = Counter(preds)
         _msg = "preds freq:\n" + "\n".join(
             [f"{idx}, {aidx.idx_to_str[idx]}: {freq}/{len(preds)}" for idx, freq in list(c.most_common())[:3]],
