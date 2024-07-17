@@ -88,8 +88,7 @@ def train(
 
         total_loss += loss.item()
         total_acc += VQA_criterion(pred.argmax(1), answers)  # VQA accuracy
-        simple_acc += (pred.argmax(1) == torch.mode(answers, dim=1).values).float().mean().item
-        ()  # simple accuracy
+        simple_acc += (pred.argmax(1) == torch.mode(answers, dim=1).values).float().mean().item()  # simple accuracy
 
         preds.extend(pred.argmax(1).tolist())
         if timer is not None:
