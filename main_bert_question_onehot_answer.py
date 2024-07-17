@@ -154,7 +154,7 @@ def main(cfg: DictConfig):
         answer=False,
     )
 
-    sampler = trainval_dataset.get_weighted_sampler(bias={"unanswerable": 0})
+    sampler = trainval_dataset.get_weighted_sampler(exclude=["unanswerable"])
     # sampleに重みをつけるとtrain accuracyの計算等にも影響がある
     train_loader = torch.utils.data.DataLoader(
         trainval_dataset,

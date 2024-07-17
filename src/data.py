@@ -636,16 +636,27 @@ class VQAStrQuestionOneHotAnswerDataset(torch.utils.data.Dataset):
     def __len__(self) -> int:
         return len(self.questions)
 
-    def get_weighted_sampler(self, count_threshould: float = 1e-1, bias: Mapping[str, float] = {}):
+    def get_weighted_sampler(
+        self,
+        count_threshould: float = 1e-1,
+        bias: Mapping[str, float] = {},
+        exclude: list[str] = [],
+    ):
         answers = torch.stack(list(self.answer_tensors.values()))  # (n_questions, n_answer_vocab)
 
         answer_sum = answers.sum(dim=0)  # (n_answer_vocab,)
+        exclude_tensor = torch.full((len(self.questions),), False)  # (n_questions,)
+        if exclude:
+            for exclude_word in exclude:
+                exclude_int = self.aidx.str_to_idx[exclude_word]
+                for i in range(len(answers.shape[1])):
+                    exclude_tensor |= answers[:, i] == exclude_int
 
         answer_weights = (answer_sum >= count_threshould) / torch.clamp(answer_sum, min=1e-2)  # (n_answer_vocab,)
         for k, v in bias.items():
             answer_weights[self.aidx.str_to_idx[k]] *= v
 
-        data_weights = torch.mv(answers, answer_weights)
+        data_weights = torch.mv(answers, answer_weights) * torch.where(exclude_tensor, 0, 1) # (n_questions,)
         pd.DataFrame(data_weights.numpy()).to_csv("data_weights.csv", index=False, header=None)
         sampler = WeightedRandomSampler(
             data_weights,
