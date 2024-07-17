@@ -250,7 +250,9 @@ class VQABertEmbeddingModel(nn.Module):
         )
 
         self.fc = nn.Sequential(
-            nn.Linear(512 + 768, 512),
+            nn.Linear(512 + 768, 1024),
+            nn.ReLU(inplace=True),
+            nn.Linear(1024, 512),
             nn.ReLU(inplace=True),
             nn.Linear(512, n_answer),
             nn.Softmax(dim=1),
