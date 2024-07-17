@@ -154,7 +154,7 @@ def main(cfg: DictConfig):
         answer=False,
     )
 
-    sampler = trainval_dataset.get_weighted_sampler(bias={"unanswerable": 0.01})
+    sampler = trainval_dataset.get_weighted_sampler(bias={"unanswerable": 0.001})
     train_loader = torch.utils.data.DataLoader(
         trainval_dataset,
         batch_size=128,
