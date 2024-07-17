@@ -146,7 +146,7 @@ def main(cfg: DictConfig):
         image_dir="./data/train",
         transform=transform,
         answer=True,
-        onehot_type="global_mode_except_unanswerable",
+        onehot_type="most_confident_mode",
     )
 
     test_dataset = VQAStrQuestionOneHotAnswerDataset(
