@@ -7,7 +7,6 @@ import numpy as np
 import torch
 import torch.nn as nn
 from omegaconf import DictConfig
-from torch.utils.data import WeightedRandomSampler
 from torchtext.data.utils import get_tokenizer
 from torchvision import transforms
 from tqdm import tqdm
@@ -104,24 +103,6 @@ class gcn:
         return (x - mean) / (std + 10 ** (-6))
 
 
-def calculate_data_weights(dataset):
-    chosen_answers_tensor = torch.tensor([dataset[i][2] for i in range(len(dataset))])
-    print(chosen_answers_tensor.shape)
-    answer_sum = chosen_answers_tensor.sum(dim=0)
-    count_threshould = 1e-1
-    print(answer_sum.shape)
-    answer_weights = (answer_sum >= count_threshould) / answer_sum
-    print(answer_weights.shape)
-    data_weights = torch.mv(chosen_answers_tensor, answer_weights)
-    print(data_weights)
-    sampler = WeightedRandomSampler(
-        data_weights,
-        len(dataset),
-        replacement=True,
-    )
-    return sampler
-
-
 @hydra.main(version_base=None, config_path="configs", config_name="config")
 def main(cfg: DictConfig):
     (
@@ -173,7 +154,7 @@ def main(cfg: DictConfig):
         answer=False,
     )
 
-    sampler = calculate_data_weights(trainval_dataset)
+    sampler = trainval_dataset.get_weighted_sampler()
     train_loader = torch.utils.data.DataLoader(
         trainval_dataset,
         batch_size=128,
