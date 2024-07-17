@@ -1,5 +1,6 @@
 import shutil
 import time
+from collections import Counter
 
 import hydra
 import numpy as np
@@ -16,6 +17,9 @@ from src import (
     VQA_criterion,
     VQACorpusDataset,
     VQAEmbeddingModel,
+    VQAOneHotAnswerDataset2,
+    VQASampleModel,
+    VQAStrQuestionOneHotAnswerDataset,
     get_all_sentences,
     get_answers,
     get_yes_no,
@@ -38,11 +42,17 @@ def train(
     total_loss = 0
     total_acc = 0
     simple_acc = 0
+    preds = []
 
     start = time.time()
     if timer is not None:
         timer.push()
-    for image, question, answers, mode_answer in tqdm(
+    for (
+        image,
+        question,
+        answer_tensor,
+        answers,
+    ) in tqdm(
         dataloader,
         total=len(dataloader),
         leave=False,
@@ -50,11 +60,11 @@ def train(
         if timer is not None:
             timer.push(tag="load_data")
 
-        image, question, answers, mode_answer = (
+        image, question, answer_tensor, answers = (
             image.to(device),
             question.to(device),
+            answer_tensor.to(device),
             answers.to(device),
-            mode_answer.to(device),
         )
         if timer is not None:
             timer.push(tag="to_device")
@@ -63,7 +73,7 @@ def train(
         if timer is not None:
             timer.push(tag="pred")
 
-        loss = criterion(pred, mode_answer.squeeze())
+        loss = criterion(pred, answer_tensor)
         if timer is not None:
             timer.push(tag="calc_loss")
 
@@ -78,11 +88,14 @@ def train(
 
         total_loss += loss.item()
         total_acc += VQA_criterion(pred.argmax(1), answers)  # VQA accuracy
-        simple_acc += (pred.argmax(1) == mode_answer).float().mean().item()  # simple accuracy
+        simple_acc += (pred.argmax(1) == torch.mode(answers, dim=1)).float().mean().item
+        ()  # simple accuracy
+
+        preds.extend(pred.argmax(1).tolist())
         if timer is not None:
             timer.push()
 
-    return total_loss / len(dataloader), total_acc / len(dataloader), simple_acc / len(dataloader), time.time() - start
+    return total_loss / len(dataloader), total_acc / len(dataloader), simple_acc / len(dataloader), time.time() - start, preds
 
 
 def eval(
@@ -162,15 +175,14 @@ def main(cfg: DictConfig):
         answer_vocab.add_sentence(a)
     answer_vocab.set_vocab(min_freq=1)
 
-    trainval_dataset = VQACorpusDataset(
+    trainval_dataset = VQAOneHotAnswerDataset2(
         df_path="./data/train.json",
         image_dir="./data/train",
-        len_sentence=256,
-        vocab=vocab,
         transform=transform,
         answer=True,
-        answer_vocab=answer_vocab,
+        onehot_type="global_mode",
     )
+    aidx = trainval_dataset.aidx
 
     test_dataset = VQACorpusDataset(
         df_path="./data/valid.json",
@@ -195,7 +207,7 @@ def main(cfg: DictConfig):
         num_workers=num_workers,
     )
 
-    model = VQAEmbeddingModel(
+    model = VQASampleModel(
         vocab_size=len(vocab),
         resnet_type=18,
         embedding_dim=512,
@@ -214,7 +226,7 @@ def main(cfg: DictConfig):
     # train model
     # 10 mins of TPU / epoch
     for epoch in range(num_epoch):
-        train_loss, train_acc, train_simple_acc, train_time = train(
+        train_loss, train_acc, train_simple_acc, train_time, preds = train(
             model,
             train_loader,
             optimizer,
@@ -230,6 +242,14 @@ def main(cfg: DictConfig):
                 f"train acc: {train_acc:.4f}",
                 f"train simple acc: {train_simple_acc:.4f}",
             ]
+        )
+        logger.info(_msg)
+        with open("tmp_preds.txt", "w") as f:
+            for i in preds:
+                f.write(f"{i}\n")
+        c = Counter(preds)
+        _msg = "preds freq:\n" + "\n".join(
+            [f"{idx}, {aidx.idx_to_str[idx]}: {freq}/{len(preds)}" for idx, freq in list(c.most_common())[:3]],
         )
         logger.info(_msg)
         epoch_timer.push()

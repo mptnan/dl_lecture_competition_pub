@@ -675,3 +675,127 @@ class VQAStrQuestionOneHotAnswerDataset(torch.utils.data.Dataset):
             replacement=True,
         )
         return sampler
+
+
+class VQAOneHotAnswerDataset2(torch.utils.data.Dataset):
+    def __init__(
+        self,
+        df_path: str,
+        image_dir: str,
+        transform: Optional[transforms.Compose] = None,
+        answer: bool = True,
+        onehot_type: Optional[
+            Literal[
+                "global_mode",
+                "most_confident_mode",
+                "confidence_weighted_average",
+                "global_mode_except_unanswerable",
+            ]
+        ] = None,
+        confidence_weight: Optional[Mapping[str, float]] = None,
+    ):
+        self.transform = transform  # 画像の前処理
+        self.image_dir = image_dir  # 画像ファイルのディレクトリ
+        self.df = pd.read_json(df_path)  # 画像ファイルのパス，question, answerを持つDataFrame
+        self.answer = answer
+
+        # question / answerの辞書を作成
+        self.question2idx = {}
+        self.answer2idx = {}
+        self.idx2question = {}
+        self.idx2answer = {}
+
+        # 質問文に含まれる単語を辞書に追加
+        for question in self.df["question"]:
+            question = process_text(question)
+            words = question.split(" ")
+            for word in words:
+                if word not in self.question2idx:
+                    self.question2idx[word] = len(self.question2idx)
+        self.idx2question = {v: k for k, v in self.question2idx.items()}  # 逆変換用の辞書(question)
+
+        self.answer = answer
+        if self.answer:
+            self.aidx = all_answers_list(df_path)
+            if onehot_type == "global_mode":
+                self.answer_tensors = global_mode_tensors(df_path, self.aidx)
+            elif onehot_type == "global_mode_except_unanswerable":
+                self.answer_tensors = global_mode_except_unanswerable_tensors(df_path, self.aidx)
+            elif onehot_type == "most_confident_mode":
+                self.answer_tensors = most_confident_mode_tensors(df_path, self.aidx)
+            elif onehot_type == "confidence_weighted_average":
+                self.answer_tensors = confidence_weighted_average_tensors(
+                    df_path,
+                    self.aidx,
+                    confidence_weight=confidence_weight,
+                )
+            else:
+                raise NoModeTypeError
+
+            self.answers = get_answers_tensor(df_path, self.aidx)
+
+    def update_dict(self, dataset: torch.utils.data.Dataset):
+        """
+        検証用データ，テストデータの辞書を訓練データの辞書に更新する．
+
+        Parameters
+        ----------
+        dataset : Dataset
+            訓練データのDataset
+        """
+        self.question2idx = dataset.question2idx
+        self.answer2idx = dataset.answer2idx
+        self.idx2question = dataset.idx2question
+        self.idx2answer = dataset.idx2answer
+
+    def __getitem__(self, idx: int) -> Union[
+        tuple[
+            torch.Tensor,
+            torch.Tensor,
+            torch.Tensor,
+            torch.Tensor,
+        ],
+        tuple[
+            torch.Tensor,
+            torch.Tensor,
+        ],
+    ]:
+        """
+        対応するidxのデータ（画像，質問，回答）を取得．
+
+        Parameters
+        ----------
+        idx : int
+            取得するデータのインデックス
+
+        Returns
+        -------
+        image : torch.Tensor  (C, H, W)
+            画像データ
+        question : torch.Tensor  (vocab_size)
+            質問文をone-hot表現に変換したもの
+        answers : torch.Tensor  (n_answer)
+            10人の回答者の回答のid
+        mode_answer_idx : torch.Tensor  (1)
+            10人の回答者の回答の中で最頻値の回答のid
+        """
+        image = Image.open(f"{self.image_dir}/{self.df['image'][idx]}")
+        image = self.transform(image)
+        question = np.zeros(len(self.idx2question) + 1)  # 未知語用の要素を追加
+        question_words = process_text(self.df["question"][idx]).split(" ")
+
+        # question: idxの質問文に含まれる単語に1それ以外に0の入ったベクトル
+        for word in question_words:
+            try:
+                question[self.question2idx[word]] = 1
+            except KeyError:
+                question[-1] = 1  # 未知語
+
+        if self.answer:
+            return image, torch.Tensor(question), self.answer_tensors[idx], self.answers[int(idx)]
+
+        else:
+            return image, torch.Tensor(question)
+
+    def __len__(self):
+        return len(self.df)

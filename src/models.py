@@ -141,9 +141,16 @@ class VQASampleModel(nn.Module):
         )
 
         self.fc = nn.Sequential(
-            nn.Linear(1024, 512),
+            nn.Linear(1024, 1024),
+            nn.BatchNorm1d(1024),
             nn.ReLU(inplace=True),
+            nn.Dropout(p=0.5),
+            nn.Linear(1024, 512),
+            nn.BatchNorm1d(512),
+            nn.ReLU(inplace=True),
+            nn.Dropout(p=0.5),
             nn.Linear(512, n_answer),
+            nn.Softmax(dim=1),
         )
 
     def forward(self, image, question):
