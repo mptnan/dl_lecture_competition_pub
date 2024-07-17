@@ -183,7 +183,7 @@ def main(cfg: DictConfig):
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=1e-5)
 
     with open("aidx.txt", "w") as f:
-        for i in aidx.idx_to_str.values():
+        for i in aidx.idx_to_str:
             f.write(f"{i}\n")
 
     epoch_timer.push()
