@@ -154,7 +154,8 @@ def main(cfg: DictConfig):
         answer=False,
     )
 
-    sampler = trainval_dataset.get_weighted_sampler(bias={"unanswerable": 0.001})
+    sampler = trainval_dataset.get_weighted_sampler(bias={"unanswerable": 0.00001})
+    # sampleに重みをつけるとtrain accuracyの計算等にも影響がある
     train_loader = torch.utils.data.DataLoader(
         trainval_dataset,
         batch_size=128,
@@ -212,9 +213,6 @@ def main(cfg: DictConfig):
             for i in preds:
                 f.write(f"{i}\n")
         c = Counter(preds)
-        if epoch == 1:
-            print(preds)
-            print(c)
         _msg = "preds freq:\n" + "\n".join(
             [f"{idx}, {aidx.idx_to_str[idx]}: {freq}/{len(preds)}" for idx, freq in list(c.most_common())[:3]],
         )
