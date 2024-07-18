@@ -12,15 +12,12 @@ from torchvision import transforms
 from tqdm import tqdm
 
 from src import (
-    CustomVocab,
     Timer,
     VQA_criterion,
     VQABertEmbeddingModel,
     VQAStrQuestionOneHotAnswerDataset,
-    get_all_sentences,
     get_yes_no,
     preprocess,
-    process_text,
 )
 
 
@@ -31,8 +28,6 @@ def train(
     criterion,
     device,
     timer=None,
-    n_top=10,
-    n_bottom=10,
 ):
     model.train()
 
@@ -123,21 +118,20 @@ def main(cfg: DictConfig):
     train_timer = Timer()
 
     # dataloader / model
+    # transform = transforms.Compose(
+    #     [
+    #         transforms.Resize((224, 224)),
+    #         transforms.ToTensor(),
+    #         transforms.RandomRotation((-180, 180)),
+    #         gcn(),
+    #     ]
+    # )
     transform = transforms.Compose(
         [
             transforms.Resize((224, 224)),
             transforms.ToTensor(),
-            transforms.RandomRotation((-180, 180)),
-            gcn(),
         ]
     )
-
-    # make vocab
-    all_sentences = get_all_sentences()
-    vocab = CustomVocab(text_processor=process_text, tokenizer=get_tokenizer("basic_english"))
-    for s in all_sentences:
-        vocab.add_sentence(s)
-    vocab.set_vocab(min_freq=25)
 
     trainval_dataset = VQAStrQuestionOneHotAnswerDataset(
         df_path="./data/train.json",
@@ -154,7 +148,7 @@ def main(cfg: DictConfig):
         answer=False,
     )
 
-    sampler = trainval_dataset.get_weighted_sampler(exclude=["unanswerable"])
+    sampler = trainval_dataset.get_weighted_sampler()
     # sampleに重みをつけるとtrain accuracyの計算等にも影響がある
     train_loader = torch.utils.data.DataLoader(
         trainval_dataset,
@@ -171,9 +165,7 @@ def main(cfg: DictConfig):
     )
     aidx = trainval_dataset.aidx
     model = VQABertEmbeddingModel(
-        vocab_size=len(vocab),
-        net_type="DenseNet121",
-        embedding_dim=512,
+        net_type="ResNet18",
         n_answer=len(aidx),
         device=device,
     ).to(device)

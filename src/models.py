@@ -246,8 +246,6 @@ class VQABertEmbeddingModel(nn.Module):
 
     def __init__(
         self,
-        vocab_size: int,
-        embedding_dim: int,
         net_type: Literal["ResNet18", "ResNet50", "ResNet101", "DenseNet121"],
         n_answer: int,
         device: str,
@@ -266,20 +264,22 @@ class VQABertEmbeddingModel(nn.Module):
 
         self.bert_model = BertModel.from_pretrained("bert-base-uncased")
         self.bert_tokenizer = BertTokenizer.from_pretrained("bert-base-uncased")
-        self.embed = nn.Embedding(
-            num_embeddings=vocab_size,
-            embedding_dim=embedding_dim,
-        )
+
+        # self.fc = nn.Sequential(
+        #     nn.Linear(512 + 768, 1024),
+        #     nn.BatchNorm1d(1024),
+        #     nn.ReLU(inplace=True),
+        #     nn.Dropout(p=0.5),
+        #     nn.Linear(1024, 512),
+        #     nn.BatchNorm1d(512),
+        #     nn.ReLU(inplace=True),
+        #     nn.Dropout(p=0.5),
+        #     nn.Linear(512, n_answer),
+        # )
 
         self.fc = nn.Sequential(
-            nn.Linear(512 + 768, 1024),
-            nn.BatchNorm1d(1024),
+            nn.Linear(512 + 768, 512),
             nn.ReLU(inplace=True),
-            nn.Dropout(p=0.5),
-            nn.Linear(1024, 512),
-            nn.BatchNorm1d(512),
-            nn.ReLU(inplace=True),
-            nn.Dropout(p=0.5),
             nn.Linear(512, n_answer),
         )
 
@@ -297,7 +297,7 @@ class VQABertEmbeddingModel(nn.Module):
             truncation=True,
             padding=True,
             return_tensors="pt",
-        )  # (*, L)->(*, embedding_dim)
+        )  # (*, L)->(*, 768)
         question_input = {k: v.to(self.device) for k, v in question_input.items()}
 
         with torch.no_grad():
