@@ -184,11 +184,9 @@ def main(cfg: DictConfig):
     )
     aidx = trainval_dataset.aidx
 
-    test_dataset = VQACorpusDataset(
+    test_dataset = VQAOneHotAnswerDataset2(
         df_path="./data/valid.json",
         image_dir="./data/valid",
-        len_sentence=256,
-        vocab=vocab,
         transform=transform,
         answer=False,
     )
@@ -274,7 +272,7 @@ def main(cfg: DictConfig):
         pred = pred.argmax(1).cpu().item()
         submission.append(pred)
 
-    submission = [answer_vocab.itow(id) for id in submission]
+    submission = [aidx.idx_to_str[id] for id in submission]
     submission = np.array(submission)
     torch.save(model.state_dict(), runtime_output_dir / "model.pth")
     np.save(hydra_output_dir / "submission.npy", submission)
